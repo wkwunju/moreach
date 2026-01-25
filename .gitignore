@@ -1,0 +1,40 @@
+# Environment
+.env
+.env.local
+backend/.env
+frontend/.env.local
+frontend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+
+# Database
+*.db
+*.db.backup*
+*.sqlite
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Claude
+.claude/
+
+# Logs
+*.log
+
+# npm cache
+.npm-cache/

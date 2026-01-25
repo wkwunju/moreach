@@ -1,0 +1,23 @@
+# Cursor AI Rules for Moreach Project
+
+## Documentation Rules
+- NEVER proactively create documentation files (*.md) or README files
+- Only create documentation files if explicitly requested by the user
+- Keep documentation minimal and consolidated in existing files
+- If documentation is needed, update existing files instead of creating new ones
+
+## Code Rules
+- Always respond in English
+- Prefer editing existing files over creating new ones
+- Use the UI style shown in screenshots: card-based minimal design with icons
+- Follow the existing project architecture and patterns
+
+## Testing Rules
+- NEVER include operational actions in TODO items (linting, testing, searching codebase)
+- Only create TODOs for actual user-facing features or tasks
+
+## File Creation Rules
+- Ask before creating new configuration files
+- Ask before creating new migration scripts
+- Only create files that are strictly necessary for functionality
+

@@ -126,12 +126,15 @@ export default function GlobeAnimation() {
   useEffect(() => {
     // 防止 React Strict Mode 导致的重复初始化
     if (initializedRef.current) {
-      console.log('⚠️ useEffect 已经初始化过，跳过');
       return;
     }
     initializedRef.current = true;
-    console.log('🎬 [START] 初始化帖子系统');
-    
+
+    // 存储所有定时器ID以便清理
+    const timeoutIds: NodeJS.Timeout[] = [];
+    let cycleInterval: NodeJS.Timeout | null = null;
+    let isUnmounted = false; // 标记组件是否已卸载
+
     // 定义所有位置及其可共存位置
     const allPositions = [
       // 左侧区域 (zone 0-6)
@@ -142,7 +145,7 @@ export default function GlobeAnimation() {
       { top: '60%', left: '-20%', zone: 4, compatibleZones: [7, 8, 9, 10, 11, 12, 13] },
       { bottom: '8%', left: '-18%', zone: 5, compatibleZones: [7, 8, 9, 10, 11, 12, 13] },
       { bottom: '7%', left: '10%', zone: 6, compatibleZones: [7, 8, 9, 10, 11, 12, 13] },
-      
+
       // 右侧区域 (zone 7-13)
       { top: '8%', right: '-18%', zone: 7, compatibleZones: [0, 1, 2, 3, 4, 5, 6] },
       { top: '7%', right: '8%', zone: 8, compatibleZones: [0, 1, 2, 3, 4, 5, 6] },
@@ -155,104 +158,109 @@ export default function GlobeAnimation() {
 
     let postIndex = 0;
     const shuffledPosts = [...allPosts].sort(() => Math.random() - 0.5);
-    let currentZone: number | null = null; // 记录当前帖子的位置
+    let currentZone: number | null = null;
 
     // 添加新帖子
     const addPost = (mustUseCompatibleZones: boolean = false) => {
+      if (isUnmounted) return; // 如果已卸载，不执行
+
       let selectedPosition;
-      
+
       if (mustUseCompatibleZones && currentZone !== null) {
-        // 必须从当前帖子的可共存位置中选择
         const currentPos = allPositions.find(p => p.zone === currentZone);
-        const compatiblePositions = allPositions.filter(p => 
+        const compatiblePositions = allPositions.filter(p =>
           currentPos?.compatibleZones.includes(p.zone)
         );
         selectedPosition = compatiblePositions[Math.floor(Math.random() * compatiblePositions.length)];
       } else {
-        // 随机选择任意位置
         selectedPosition = allPositions[Math.floor(Math.random() * allPositions.length)];
       }
-      
+
       const newPost = {
         ...shuffledPosts[postIndex % shuffledPosts.length],
-        position: { 
-          top: selectedPosition.top, 
-          bottom: selectedPosition.bottom, 
-          left: selectedPosition.left, 
-          right: selectedPosition.right 
+        position: {
+          top: selectedPosition.top,
+          bottom: selectedPosition.bottom,
+          left: selectedPosition.left,
+          right: selectedPosition.right
         },
         zoneId: selectedPosition.zone
       };
-      
+
       activePostsRef.current.push(newPost);
       setDisplayedPosts([...activePostsRef.current]);
-      
-      console.log(`✅ [${Date.now()}] 添加帖子 #${newPost.id} zone:${selectedPosition.zone} | 当前队列长度:${activePostsRef.current.length} | 队列:`, activePostsRef.current.map(p => `#${p.id}(zone:${(p as any).zoneId})`));
-      
-      // 更新当前zone
       currentZone = selectedPosition.zone;
-      
+
       // 淡入效果
-      setTimeout(() => {
-        setVisiblePosts(prev => [...prev, newPost.id]);
+      const fadeInTimeout = setTimeout(() => {
+        if (!isUnmounted) {
+          setVisiblePosts(prev => [...prev, newPost.id]);
+        }
       }, 100);
-      
+      timeoutIds.push(fadeInTimeout);
+
       postIndex++;
     };
 
     // 移除最早的帖子
     const removeOldest = () => {
-      if (activePostsRef.current.length === 0) {
-        console.log(`⚠️ [${Date.now()}] 尝试移除但队列为空`);
-        return;
-      }
+      if (isUnmounted) return;
+      if (activePostsRef.current.length === 0) return;
+
       const oldestPost = activePostsRef.current.shift()!;
       setVisiblePosts(prev => prev.filter(id => id !== oldestPost.id));
       setDisplayedPosts([...activePostsRef.current]);
-      
-      console.log(`❌ [${Date.now()}] 移除帖子 #${oldestPost.id} zone:${(oldestPost as any).zoneId} | 当前队列长度:${activePostsRef.current.length} | 队列:`, activePostsRef.current.map(p => `#${p.id}(zone:${(p as any).zoneId})`));
-      
-      // 更新 currentZone 为剩余帖子的 zone
+
       if (activePostsRef.current.length > 0) {
         currentZone = (activePostsRef.current[0] as any).zoneId;
       }
     };
 
-    // 时间线：明确的先退后进（调慢速度）
-    addPost(false);              // 0ms: 帖子1进入
-    setTimeout(() => addPost(true), 1000);  // 1000ms: 帖子2进入（屏幕：1, 2）
-    
-    // 后续：严格的退-进-退-进循环
-    setTimeout(() => {
-      removeOldest();            // 2500ms: 帖子1退出（屏幕：2）
-      setTimeout(() => addPost(true), 150);  // 2650ms: 帖子3进入（屏幕：2, 3）
-    }, 2500);
-    
-    setTimeout(() => {
-      removeOldest();            // 4000ms: 帖子2退出（屏幕：3）
-      setTimeout(() => addPost(true), 150);  // 4150ms: 帖子4进入（屏幕：3, 4）
-    }, 4000);
-    
-    // 从5500ms开始，每1500ms一个周期（退出+进入）
-    let cycleInterval: NodeJS.Timeout;
-    setTimeout(() => {
-      console.log('🔄 [LOOP START] 开始循环');
-      // 第一次循环
+    // 时间线
+    addPost(false);
+
+    const t1 = setTimeout(() => addPost(true), 1000);
+    timeoutIds.push(t1);
+
+    const t2 = setTimeout(() => {
       removeOldest();
-      setTimeout(() => addPost(true), 150);
-      
-      // 后续每1500ms一次
+      const t2a = setTimeout(() => addPost(true), 150);
+      timeoutIds.push(t2a);
+    }, 2500);
+    timeoutIds.push(t2);
+
+    const t3 = setTimeout(() => {
+      removeOldest();
+      const t3a = setTimeout(() => addPost(true), 150);
+      timeoutIds.push(t3a);
+    }, 4000);
+    timeoutIds.push(t3);
+
+    const t4 = setTimeout(() => {
+      removeOldest();
+      const t4a = setTimeout(() => addPost(true), 150);
+      timeoutIds.push(t4a);
+
       cycleInterval = setInterval(() => {
+        if (isUnmounted) return;
         removeOldest();
-        setTimeout(() => addPost(true), 150);
+        const cycleTimeout = setTimeout(() => addPost(true), 150);
+        timeoutIds.push(cycleTimeout);
       }, 1500);
     }, 5500);
+    timeoutIds.push(t4);
 
     return () => {
+      isUnmounted = true;
+      // 清理所有 setTimeout
+      timeoutIds.forEach(id => clearTimeout(id));
+      // 清理 setInterval
       if (cycleInterval) {
         clearInterval(cycleInterval);
       }
-      console.log('🛑 [CLEANUP] 清理定时器');
+      // 重置状态
+      activePostsRef.current = [];
+      initializedRef.current = false;
     };
   }, []);
 

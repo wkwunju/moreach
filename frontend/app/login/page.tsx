@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -17,7 +19,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:8000/api/v1/auth/login", {
+      const response = await fetch(`${API_BASE}/api/v1/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

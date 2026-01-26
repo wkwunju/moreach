@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Dropdown from "@/components/Dropdown";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+
 // Industry options relevant to moreach
 const INDUSTRIES = [
   { value: "E-commerce", label: "E-commerce" },
@@ -72,7 +74,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:8000/api/v1/auth/register", {
+      const response = await fetch(`${API_BASE}/api/v1/auth/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

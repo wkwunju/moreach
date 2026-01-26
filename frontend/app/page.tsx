@@ -660,7 +660,7 @@ export default function HomePage() {
                 moreach.ai
               </div>
               <p className="text-gray-700 text-lg mb-6 leading-relaxed">
-                AI-powered influencer discovery for modern brands. Find leads on Reddit with intelligent automation.
+                AI-powered lead discovery across social platforms. Turn online conversations into business opportunities.
               </p>
               <div className="flex gap-4">
                 <a href="#" className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all hover:scale-110 group">
@@ -683,9 +683,9 @@ export default function HomePage() {
             <div>
               <h4 className="font-bold text-gray-900 mb-4 text-lg">Product</h4>
               <ul className="space-y-3 text-gray-600">
-                <li><Link href="#features" className="hover:text-orange-600 transition font-medium">Features</Link></li>
-                <li><Link href="#use-cases" className="hover:text-orange-600 transition font-medium">Use Cases</Link></li>
-                <li><Link href="/demo" className="hover:text-orange-600 transition font-medium">Request Demo</Link></li>
+                <li><Link href="#how-it-works" className="hover:text-orange-600 transition font-medium">How It Works</Link></li>
+                <li><Link href="/login" className="hover:text-orange-600 transition font-medium">Sign In</Link></li>
+                <li><Link href="/register" className="hover:text-orange-600 transition font-medium">Get Started</Link></li>
               </ul>
             </div>
             <div>
@@ -699,7 +699,7 @@ export default function HomePage() {
           </div>
           <div className="pt-8 border-t-2 border-gray-200 text-center">
             <p className="text-gray-600 font-medium">
-              © 2026 moreach.ai — Connecting brands with the right creators 🚀
+              © 2026 moreach.ai — Discover leads where conversations happen
             </p>
           </div>
         </div>

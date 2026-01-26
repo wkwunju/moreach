@@ -9,8 +9,19 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "moreach.ai",
-  description: "Instagram influencer discovery for modern brands"
+  title: "moreach.ai - AI-Powered Lead Discovery",
+  description: "AI-powered lead discovery across social platforms. Turn online conversations into business opportunities.",
+  openGraph: {
+    title: "moreach.ai - AI-Powered Lead Discovery",
+    description: "AI-powered lead discovery across social platforms. Turn online conversations into business opportunities.",
+    type: "website",
+    siteName: "moreach.ai",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "moreach.ai - AI-Powered Lead Discovery",
+    description: "AI-powered lead discovery across social platforms. Turn online conversations into business opportunities.",
+  },
 };
 
 export default function RootLayout({

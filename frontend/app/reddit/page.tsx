@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   createRedditCampaign,
   discoverSubreddits,
@@ -20,6 +20,163 @@ import Dropdown from "@/components/Dropdown";
 import DashboardLayout from "@/components/DashboardLayout";
 
 type Step = "campaigns" | "create" | "discover" | "leads";
+
+// Loading messages for subreddit discovery
+const DISCOVERY_MESSAGES = [
+  { text: "Analyzing your business description...", icon: "analyze" },
+  { text: "Understanding your target audience...", icon: "audience" },
+  { text: "Searching Reddit communities...", icon: "search" },
+  { text: "Evaluating community relevance...", icon: "evaluate" },
+  { text: "Calculating match scores...", icon: "calculate" },
+  { text: "Ranking subreddits for you...", icon: "rank" },
+];
+
+// Animated loading component for discovery
+function DiscoveryLoadingState() {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    // Cycle through messages every 2.5 seconds
+    const messageInterval = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % DISCOVERY_MESSAGES.length);
+    }, 2500);
+
+    // Animate progress bar
+    const progressInterval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 95) return prev; // Cap at 95% until done
+        return prev + Math.random() * 3;
+      });
+    }, 200);
+
+    return () => {
+      clearInterval(messageInterval);
+      clearInterval(progressInterval);
+    };
+  }, []);
+
+  const currentMessage = DISCOVERY_MESSAGES[currentIndex];
+
+  const getIcon = (iconType: string) => {
+    switch (iconType) {
+      case "analyze":
+        return (
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+        );
+      case "audience":
+        return (
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+        );
+      case "search":
+        return (
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        );
+      case "evaluate":
+        return (
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+          </svg>
+        );
+      case "calculate":
+        return (
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
+        );
+      case "rank":
+        return (
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+          </svg>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="py-16 px-8">
+      <div className="max-w-md mx-auto">
+        {/* Animated Icon */}
+        <div className="flex justify-center mb-8">
+          <div className="relative">
+            {/* Pulsing background */}
+            <div className="absolute inset-0 bg-blue-100 rounded-full animate-ping opacity-25" />
+            {/* Icon container */}
+            <div className="relative w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white shadow-lg">
+              <div className="animate-pulse">
+                {getIcon(currentMessage.icon)}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Message with fade transition */}
+        <div className="text-center mb-8">
+          <p
+            key={currentIndex}
+            className="text-lg font-medium text-gray-900 animate-fade-in"
+          >
+            {currentMessage.text}
+          </p>
+          <p className="text-sm text-gray-500 mt-2">
+            This may take a moment...
+          </p>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mb-6">
+          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-blue-500 to-purple-600 rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Step indicators */}
+        <div className="flex justify-center gap-2">
+          {DISCOVERY_MESSAGES.map((_, idx) => (
+            <div
+              key={idx}
+              className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                idx === currentIndex
+                  ? "bg-blue-600 scale-125"
+                  : idx < currentIndex
+                  ? "bg-blue-400"
+                  : "bg-gray-300"
+              }`}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* CSS for fade animation */}
+      <style jsx>{`
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.5s ease-out;
+        }
+      `}</style>
+    </div>
+  );
+}
 
 // Helper function to display time ago
 function getTimeAgo(timestamp: number): string {
@@ -452,7 +609,15 @@ export default function RedditPage() {
             </div>
 
             {loading ? (
-              <div className="text-center py-12">Loading radars...</div>
+              <div className="text-center py-12">
+                <div className="inline-flex items-center gap-3 text-gray-500">
+                  <svg className="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span className="text-lg">Loading your radars...</span>
+                </div>
+              </div>
             ) : campaigns.length === 0 ? (
               <div className="text-center py-12 bg-white rounded-lg border">
                 <p className="text-gray-500 mb-4">No radars yet</p>
@@ -721,7 +886,7 @@ export default function RedditPage() {
             </h2>
 
             {loading ? (
-              <div className="text-center py-12">Discovering subreddits...</div>
+              <DiscoveryLoadingState />
             ) : (
               <>
                 <div className="mb-6 flex items-center justify-between">
@@ -1063,7 +1228,33 @@ export default function RedditPage() {
               {/* Leads List */}
               <div className="flex-1 overflow-y-auto mt-1">
                 {loading ? (
-                  <div className="text-center py-12 text-gray-500">Loading leads...</div>
+                  <div className="text-center py-16">
+                    <div className="max-w-sm mx-auto">
+                      {/* Animated icon */}
+                      <div className="flex justify-center mb-6">
+                        <div className="relative">
+                          <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg">
+                            <svg className="w-7 h-7 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                          </div>
+                          <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-white rounded-full flex items-center justify-center shadow">
+                            <svg className="w-3 h-3 text-blue-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Fetching leads...</h3>
+                      <p className="text-sm text-gray-500 mb-4">
+                        Scanning subreddits and analyzing posts. This may take a few minutes.
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        Feel free to leave and come back later - we&apos;ll keep working in the background.
+                      </p>
+                    </div>
+                  </div>
                 ) : leads.filter(l => selectedSubreddit === "all" || l.subreddit_name === selectedSubreddit).length === 0 ? (
                   <div className="text-center py-12">
                     <p className="text-gray-500">No leads found</p>
@@ -1342,7 +1533,15 @@ export default function RedditPage() {
                   <div className="p-6">
                     <h3 className="text-lg font-semibold mb-4">Currently Tracking ({trackedSubreddits.length})</h3>
                     {loadingSubreddits ? (
-                      <div className="text-center py-8 text-gray-500">Loading...</div>
+                      <div className="text-center py-8">
+                        <div className="inline-flex items-center gap-2 text-gray-500">
+                          <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          <span>Loading tracked subreddits...</span>
+                        </div>
+                      </div>
                     ) : trackedSubreddits.length === 0 ? (
                       <div className="text-center py-8 text-gray-500">
                         No subreddits tracked yet
@@ -1380,7 +1579,15 @@ export default function RedditPage() {
                       Recommended for Your Business ({recommendedSubreddits.length})
                     </h3>
                     {loadingSubreddits ? (
-                      <div className="text-center py-8 text-gray-500">Loading recommendations...</div>
+                      <div className="text-center py-8">
+                        <div className="inline-flex items-center gap-2 text-gray-500">
+                          <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          <span>Finding recommendations...</span>
+                        </div>
+                      </div>
                     ) : recommendedSubreddits.length === 0 ? (
                       <div className="text-center py-8 text-gray-500">
                         No new recommendations found

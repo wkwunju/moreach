@@ -5,6 +5,8 @@ from app.core.config import settings
 from app.core.db import Base, engine
 from app.core.logging import setup_logging
 from app.api.v1.routes import router as api_router
+# Import all models so SQLAlchemy knows about them before create_all()
+from app.models import tables  # noqa: F401
 
 
 setup_logging()

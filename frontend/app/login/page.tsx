@@ -12,10 +12,15 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMessage, setResendMessage] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setNeedsVerification(false);
+    setResendMessage("");
     setLoading(true);
 
     try {
@@ -30,6 +35,10 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (!response.ok) {
+        // Check if it's an email verification error
+        if (response.status === 403 && data.detail?.includes("verify your email")) {
+          setNeedsVerification(true);
+        }
         throw new Error(data.detail || "Login failed");
       }
 
@@ -43,6 +52,23 @@ export default function LoginPage() {
       setError(err.message || "An error occurred during login");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setResendLoading(true);
+    setResendMessage("");
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/v1/auth/resend-verification?email=${encodeURIComponent(email)}`,
+        { method: "POST" }
+      );
+      const data = await response.json();
+      setResendMessage("Verification email sent! Please check your inbox.");
+    } catch {
+      setResendMessage("Failed to send email. Please try again.");
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -64,6 +90,21 @@ export default function LoginPage() {
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
                 {error}
+                {needsVerification && (
+                  <div className="mt-3 pt-3 border-t border-red-200">
+                    <button
+                      type="button"
+                      onClick={handleResendVerification}
+                      disabled={resendLoading}
+                      className="text-blue-600 hover:text-blue-800 font-semibold disabled:opacity-50"
+                    >
+                      {resendLoading ? "Sending..." : "Resend verification email"}
+                    </button>
+                    {resendMessage && (
+                      <p className="mt-2 text-green-600 text-sm">{resendMessage}</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

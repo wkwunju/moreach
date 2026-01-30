@@ -6,8 +6,10 @@ import logging
 
 from app.core.db import get_db
 from app.core.auth import (
-    get_password_hash, verify_password, create_access_token, get_current_user
+    get_password_hash, verify_password, create_access_token, get_current_user,
+    create_verification_token, verify_verification_token
 )
+from app.core.email import send_verification_email, send_welcome_email
 from app.models.schemas import (
     RequestCreate, RequestResponse, ResultsResponse, InfluencerResponse,
     # User schemas
@@ -35,10 +37,11 @@ logger = logging.getLogger(__name__)
 
 # ======= Authentication Endpoints =======
 
-@router.post("/auth/register", response_model=TokenResponse)
+@router.post("/auth/register")
 def register(payload: UserRegister, db: Session = Depends(get_db)):
     """
     Register a new user account
+    Sends a verification email - user must verify before logging in
     """
     # Check if user already exists
     existing_user = db.query(User).filter(User.email == payload.email).first()
@@ -47,8 +50,8 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
             status_code=400,
             detail="Email already registered"
         )
-    
-    # Create new user
+
+    # Create new user (email_verified defaults to False)
     user = User(
         email=payload.email,
         hashed_password=get_password_hash(payload.password),
@@ -58,37 +61,30 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
         industry=payload.industry,
         usage_type=payload.usage_type,
     )
-    
+
     db.add(user)
     db.commit()
     db.refresh(user)
-    
-    # Create access token (sub must be string)
-    access_token = create_access_token(data={"sub": str(user.id)})
-    
-    # Return token and user info
-    return TokenResponse(
-        access_token=access_token,
-        user=UserResponse(
-            id=user.id,
-            email=user.email,
-            full_name=user.full_name,
-            company=user.company,
-            job_title=user.job_title,
-            industry=user.industry.value,
-            usage_type=user.usage_type.value,
-            role=user.role.value,
-            is_active=user.is_active,
-            email_verified=user.email_verified,
-            created_at=user.created_at,
-        )
-    )
+
+    # Send verification email
+    verification_token = create_verification_token(user.email)
+    email_sent = send_verification_email(user.email, verification_token)
+
+    if not email_sent:
+        logger.warning(f"Failed to send verification email to {user.email}")
+
+    return {
+        "message": "Registration successful. Please check your email to verify your account.",
+        "email": user.email,
+        "email_sent": email_sent
+    }
 
 
 @router.post("/auth/login", response_model=TokenResponse)
 def login(payload: UserLogin, db: Session = Depends(get_db)):
     """
     Login with email and password
+    Requires email to be verified
     """
     # Find user by email
     user = db.query(User).filter(User.email == payload.email).first()
@@ -97,16 +93,23 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             status_code=401,
             detail="Incorrect email or password"
         )
-    
+
     if not user.is_active:
         raise HTTPException(
             status_code=403,
             detail="Account is inactive"
         )
-    
+
+    # Check if email is verified
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Please verify your email before logging in. Check your inbox for the verification link."
+        )
+
     # Create access token (sub must be string)
     access_token = create_access_token(data={"sub": str(user.id)})
-    
+
     # Return token and user info
     return TokenResponse(
         access_token=access_token,
@@ -144,6 +147,65 @@ def get_me(current_user: User = Depends(get_current_user)):
         email_verified=current_user.email_verified,
         created_at=current_user.created_at,
     )
+
+
+@router.post("/auth/verify-email")
+def verify_email(token: str, db: Session = Depends(get_db)):
+    """
+    Verify email address using the token from the verification email
+    """
+    email = verify_verification_token(token)
+    if not email:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or expired verification link. Please request a new one."
+        )
+
+    # Find user by email
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    if user.email_verified:
+        return {"message": "Email already verified. You can now log in."}
+
+    # Mark email as verified
+    user.email_verified = True
+    db.commit()
+
+    # Send welcome email
+    send_welcome_email(user.email, user.full_name)
+
+    return {"message": "Email verified successfully. You can now log in."}
+
+
+@router.post("/auth/resend-verification")
+def resend_verification(email: str, db: Session = Depends(get_db)):
+    """
+    Resend verification email
+    """
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        # Don't reveal if email exists or not for security
+        return {"message": "If an account exists with this email, a verification email has been sent."}
+
+    if user.email_verified:
+        raise HTTPException(
+            status_code=400,
+            detail="Email is already verified"
+        )
+
+    # Send verification email
+    verification_token = create_verification_token(user.email)
+    email_sent = send_verification_email(user.email, verification_token)
+
+    return {
+        "message": "If an account exists with this email, a verification email has been sent.",
+        "email_sent": email_sent
+    }
 
 
 # ======= Influencer Discovery Endpoints =======

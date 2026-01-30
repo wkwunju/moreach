@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     # Authentication
     SECRET_KEY: str = "your-secret-key-change-this-in-production-moreach-2024"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24  # Email verification token expires in 24 hours
+
+    # Email (SendGrid)
+    SENDGRID_API_KEY: str = ""
+    SENDGRID_FROM_EMAIL: str = "noreply@moreach.ai"
+    FRONTEND_URL: str = "http://localhost:3000"
 
     database_url: str = "sqlite:///./app.db"
 

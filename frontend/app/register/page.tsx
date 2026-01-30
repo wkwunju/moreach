@@ -42,6 +42,8 @@ export default function RegisterPage() {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({
@@ -96,18 +98,89 @@ export default function RegisterPage() {
         throw new Error(data.detail || "Registration failed");
       }
 
-      // Store token and user info
-      localStorage.setItem("token", data.access_token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-
-      // Redirect to dashboard or home
-      router.push("/reddit");
+      // Show success message - user needs to verify email
+      setRegistrationSuccess(true);
+      setRegisteredEmail(formData.email);
     } catch (err: any) {
       setError(err.message || "An error occurred during registration");
     } finally {
       setLoading(false);
     }
   };
+
+  // Show success message after registration
+  if (registrationSuccess) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <Link href="/" className="text-3xl font-bold text-gray-900">
+              moreach.ai
+            </Link>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center">
+            {/* Success Icon */}
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Check your email</h2>
+
+            <p className="text-gray-600 mb-6">
+              We&apos;ve sent a verification link to<br />
+              <span className="font-semibold text-gray-900">{registeredEmail}</span>
+            </p>
+
+            <p className="text-sm text-gray-500 mb-8">
+              Click the link in the email to verify your account and start using moreach.ai.
+              The link will expire in 24 hours.
+            </p>
+
+            <div className="space-y-3">
+              <Link
+                href="/login"
+                className="block w-full rounded-xl bg-gray-900 px-6 py-3 text-base font-semibold text-white transition hover:bg-gray-800"
+              >
+                Go to Login
+              </Link>
+
+              <button
+                onClick={() => {
+                  setRegistrationSuccess(false);
+                  setFormData({ ...formData, password: "", confirmPassword: "" });
+                }}
+                className="block w-full rounded-xl bg-gray-100 px-6 py-3 text-base font-semibold text-gray-700 transition hover:bg-gray-200"
+              >
+                Use a different email
+              </button>
+            </div>
+          </div>
+
+          <p className="text-center text-sm text-gray-500 mt-6">
+            Didn&apos;t receive the email? Check your spam folder or{" "}
+            <button
+              onClick={async () => {
+                try {
+                  await fetch(`${API_BASE}/api/v1/auth/resend-verification?email=${encodeURIComponent(registeredEmail)}`, {
+                    method: "POST",
+                  });
+                  alert("Verification email resent!");
+                } catch {
+                  alert("Failed to resend email. Please try again.");
+                }
+              }}
+              className="text-blue-600 hover:text-blue-800 font-semibold"
+            >
+              resend verification email
+            </button>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-6 py-12">

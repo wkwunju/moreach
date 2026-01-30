@@ -16,7 +16,7 @@ export default function HomePage() {
 
       {/* Hero Section - Linktree Yellow-Green */}
       <section className="min-h-screen bg-gradient-to-br from-yellow-300 via-lime-300 to-green-300 relative flex items-center">
-        <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-[1.618fr_1fr] gap-12 items-center relative z-10 w-full py-20">
+        <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-[1.618fr_1fr] gap-12 items-center relative z-10 w-full pt-28 pb-20 md:py-20">
           {/* Left Content */}
           <div className="text-left">
           {/* Main Title */}
@@ -820,9 +820,9 @@ function RedditContent() {
           </div>
 
           {/* Two Cards Side by Side */}
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-2 gap-6 max-w-lg mx-auto md:max-w-none">
             {/* Left Card - Real Conversations */}
-            <div className="bg-gradient-to-br from-orange-500 to-red-500 rounded-3xl p-10 text-white relative overflow-hidden group hover:shadow-2xl transition-all duration-300">
+            <div className="bg-gradient-to-br from-orange-500 to-red-500 rounded-3xl p-8 md:p-10 text-white relative overflow-hidden group hover:shadow-2xl transition-all duration-300">
               <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-500"></div>
               <div className="relative z-10">
                 <div className="w-16 h-16 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mb-6">
@@ -838,7 +838,7 @@ function RedditContent() {
             </div>
 
             {/* Right Card - Influence AI */}
-            <div className="bg-white rounded-3xl p-10 shadow-xl hover:shadow-2xl transition-all duration-300 border-2 border-orange-100 group">
+            <div className="bg-white rounded-3xl p-8 md:p-10 shadow-xl hover:shadow-2xl transition-all duration-300 border-2 border-orange-100 group">
               <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-3 transition-all">
                 <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />

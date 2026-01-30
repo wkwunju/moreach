@@ -780,60 +780,54 @@ export default function RedditPage() {
                 </div>
 
                 {/* Step 1 */}
-                <div className="relative bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md hover:border-gray-300 transition-all group">
-                  <div className="absolute -top-3 -left-3 w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md hover:border-gray-300 transition-all group text-center">
+                  <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform mx-auto mb-4">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </div>
-                  <div className="pt-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-xs font-bold text-blue-600 uppercase tracking-wide">Step 1</span>
-                      <div className="h-px bg-blue-200 flex-1"></div>
-                    </div>
-                    <h4 className="text-base font-semibold text-gray-900 mb-2">Discover Communities</h4>
-                    <p className="text-sm text-gray-600 leading-relaxed">
-                      Describe your business and our AI finds relevant subreddits where your potential customers are active.
-                    </p>
+                  <div className="flex items-center gap-2 mb-3 justify-center">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Step 1</span>
+                    <div className="h-px bg-gray-200 w-12"></div>
                   </div>
+                  <h4 className="text-base font-semibold text-gray-900 mb-2">Discover Communities</h4>
+                  <p className="text-sm text-gray-600 leading-relaxed">
+                    Describe your business and our AI finds relevant subreddits where your potential customers are active.
+                  </p>
                 </div>
 
                 {/* Step 2 */}
-                <div className="relative bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md hover:border-gray-300 transition-all group">
-                  <div className="absolute -top-3 -left-3 w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md hover:border-gray-300 transition-all group text-center">
+                  <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform mx-auto mb-4">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
                   </div>
-                  <div className="pt-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-xs font-bold text-purple-600 uppercase tracking-wide">Step 2</span>
-                      <div className="h-px bg-purple-200 flex-1"></div>
-                    </div>
-                    <h4 className="text-base font-semibold text-gray-900 mb-2">Track Posts</h4>
-                    <p className="text-sm text-gray-600 leading-relaxed">
-                      We monitor discussions and identify high-intent posts from people looking for solutions like yours.
-                    </p>
+                  <div className="flex items-center gap-2 mb-3 justify-center">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Step 2</span>
+                    <div className="h-px bg-gray-200 w-12"></div>
                   </div>
+                  <h4 className="text-base font-semibold text-gray-900 mb-2">Track Posts</h4>
+                  <p className="text-sm text-gray-600 leading-relaxed">
+                    We monitor discussions and identify high-intent posts from people looking for solutions like yours.
+                  </p>
                 </div>
 
                 {/* Step 3 */}
-                <div className="relative bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md hover:border-gray-300 transition-all group">
-                  <div className="absolute -top-3 -left-3 w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md hover:border-gray-300 transition-all group text-center">
+                  <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform mx-auto mb-4">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                     </svg>
                   </div>
-                  <div className="pt-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-xs font-bold text-green-600 uppercase tracking-wide">Step 3</span>
-                      <div className="h-px bg-green-200 flex-1"></div>
-                    </div>
-                    <h4 className="text-base font-semibold text-gray-900 mb-2">Engage & Convert</h4>
-                    <p className="text-sm text-gray-600 leading-relaxed">
-                      Review AI-generated responses and engage with potential customers at the perfect moment.
-                    </p>
+                  <div className="flex items-center gap-2 mb-3 justify-center">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Step 3</span>
+                    <div className="h-px bg-gray-200 w-12"></div>
                   </div>
+                  <h4 className="text-base font-semibold text-gray-900 mb-2">Engage & Convert</h4>
+                  <p className="text-sm text-gray-600 leading-relaxed">
+                    Review AI-generated responses and engage with potential customers at the perfect moment.
+                  </p>
                 </div>
               </div>
             </div>

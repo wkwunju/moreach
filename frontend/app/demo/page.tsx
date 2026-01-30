@@ -65,7 +65,7 @@ export default function DemoPage() {
     <div className="min-h-screen bg-gray-50">
       <Navigation />
       
-      <main className="pt-24 pb-12 px-6">
+      <main className="pt-32 pb-12 px-6">
         <div className="max-w-3xl mx-auto">
           {/* Header */}
           <div className="text-center mb-12">
@@ -73,7 +73,7 @@ export default function DemoPage() {
               Request a Demo
             </h1>
             <p className="text-xl text-gray-600">
-              See how moreach.ai can transform your influencer marketing strategy
+              See how we can help you discover and engage with potential customers
             </p>
           </div>
 
@@ -178,7 +178,7 @@ export default function DemoPage() {
                   value={formData.message}
                   onChange={handleChange}
                   className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition"
-                  placeholder="What are your main goals for influencer marketing?"
+                  placeholder="What are your main goals for lead generation?"
                 />
               </div>
 

@@ -56,7 +56,7 @@ export interface ResultsResponse {
 // ======= Reddit Types =======
 
 export type RedditCampaignStatus = "DISCOVERING" | "ACTIVE" | "PAUSED" | "COMPLETED" | "DELETED";
-export type RedditLeadStatus = "NEW" | "REVIEWED" | "CONTACTED" | "DISMISSED";
+export type RedditLeadStatus = "NEW" | "CONTACTED" | "DISMISSED";
 
 export interface RedditCampaign {
   id: number;
@@ -96,13 +96,15 @@ export interface RedditLead {
   suggested_dm: string;
   status: RedditLeadStatus;
   discovered_at: string;
+  // Lazy suggestion generation tracking
+  has_suggestions?: boolean;
+  suggestions_generated_at?: string;
 }
 
 export interface RedditLeadsResponse {
   campaign_id: number;
   total_leads: number;
   new_leads: number;
-  reviewed_leads: number;
   contacted_leads: number;
   leads: RedditLead[];
 }

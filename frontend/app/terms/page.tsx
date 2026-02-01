@@ -74,7 +74,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">6. Payment and Subscription</h2>
             <p className="text-gray-700 leading-relaxed">
-              Subscription fees are billed in advance on a recurring basis. You may cancel your subscription at any time, but refunds are not provided for partial subscription periods. We offer a 14-day free trial with no credit card required.
+              Subscription fees are billed in advance on a recurring basis. You may cancel your subscription at any time, but refunds are not provided for partial subscription periods. We offer a 7-day free trial.
             </p>
           </section>
 

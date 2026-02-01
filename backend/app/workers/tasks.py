@@ -211,22 +211,47 @@ def _store_results(db, request: Request, matches: list[dict]) -> None:
 
 # ======= Reddit Lead Generation Tasks =======
 
+@celery_app.task(name="app.workers.tasks.poll_reddit_scheduled")
+def poll_reddit_scheduled() -> dict:
+    """
+    Tier-based scheduled Reddit polling task.
+
+    Runs every hour and checks which users should be polled based on their tier:
+    - Starter plans: 2x/day at UTC 07:00 and 16:00
+    - Growth/Pro plans: 4x/day at UTC 07:00, 11:00, 16:00, 22:00
+
+    This task respects the ENABLE_SCHEDULED_POLLING setting.
+    """
+    from app.services.reddit.scheduler import run_scheduled_polls
+
+    logger.info("Starting tier-based scheduled Reddit polling")
+
+    try:
+        stats = run_scheduled_polls()
+        logger.info(f"Scheduled Reddit polling complete: {stats}")
+        return stats
+
+    except Exception as e:
+        logger.exception("Scheduled Reddit polling task failed")
+        raise
+
+
 @celery_app.task(name="app.workers.tasks.poll_reddit_leads")
 def poll_reddit_leads() -> dict:
     """
-    Centralized Reddit polling task
-    Runs periodically (e.g., every 6 hours) to poll all active subreddits
+    Legacy: Centralized Reddit polling task (polls all active campaigns)
+    Kept for backward compatibility.
     """
     db = SessionLocal()
     try:
-        logger.info("Starting Reddit polling task")
-        
+        logger.info("Starting Reddit polling task (legacy)")
+
         polling_service = RedditPollingService()
         summary = polling_service.poll_all_active_subreddits(db)
-        
+
         logger.info(f"Reddit polling complete: {summary}")
         return summary
-        
+
     except Exception as e:
         logger.exception("Reddit polling task failed")
         raise

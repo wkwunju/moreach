@@ -18,7 +18,7 @@ from app.models.tables import (
     GlobalSubredditPoll,
     RedditCampaignStatus
 )
-from app.providers.reddit.apify import ApifyRedditProvider
+from app.providers.reddit.factory import get_reddit_provider
 from app.services.reddit.scoring import RedditScoringService
 
 
@@ -31,7 +31,7 @@ class RedditPollingService:
     """
     
     def __init__(self):
-        self.reddit_provider = ApifyRedditProvider()
+        self.reddit_provider = get_reddit_provider()
         self.scoring_service = RedditScoringService()
     
     def get_subreddits_to_poll(self, db: Session, max_age_hours: int = 6) -> List[str]:

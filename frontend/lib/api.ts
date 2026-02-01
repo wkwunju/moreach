@@ -167,6 +167,141 @@ export async function runCampaignNow(campaignId: number): Promise<{ message: str
   return response.json();
 }
 
+// ======= SSE Streaming API =======
+
+export interface SSEProgressEvent {
+  phase: "fetching" | "scoring" | "suggestions";
+  current: number;
+  total: number;
+  subreddit?: string;
+  posts_found?: number;
+  message?: string;
+  error?: string;
+}
+
+export interface SSELeadEvent {
+  id: number;
+  title: string;
+  relevancy_score: number;
+  subreddit_name: string;
+  has_suggestions: boolean;
+  author?: string;
+}
+
+export interface SSECompleteEvent {
+  total_leads: number;
+  total_posts_fetched: number;
+  subreddits_polled?: number;
+  relevancy_distribution?: Record<string, number>;
+  subreddit_distribution?: Record<string, number>;
+  message?: string;
+}
+
+export interface SSEErrorEvent {
+  message: string;
+}
+
+export type SSEEvent =
+  | { type: "progress"; data: SSEProgressEvent }
+  | { type: "lead"; data: SSELeadEvent }
+  | { type: "complete"; data: SSECompleteEvent }
+  | { type: "error"; data: SSEErrorEvent };
+
+/**
+ * Run campaign with SSE streaming updates
+ * Returns a cleanup function to abort the stream
+ */
+export function runCampaignNowStream(
+  campaignId: number,
+  onEvent: (event: SSEEvent) => void,
+  onError: (error: Error) => void
+): () => void {
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const url = `${baseUrl}/api/v1/reddit/campaigns/${campaignId}/run-now/stream`;
+
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "text/event-stream",
+        },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) throw new Error("No reader available");
+
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() || "";
+
+        for (const chunk of chunks) {
+          if (!chunk.trim()) continue;
+
+          const eventMatch = chunk.match(/event: (\w+)/);
+          const dataMatch = chunk.match(/data: (.+)/s);
+
+          if (eventMatch && dataMatch) {
+            try {
+              const event: SSEEvent = {
+                type: eventMatch[1] as SSEEvent["type"],
+                data: JSON.parse(dataMatch[1]),
+              };
+              onEvent(event);
+            } catch (e) {
+              console.error("Failed to parse SSE event:", e, chunk);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") {
+        onError(error as Error);
+      }
+    }
+  })();
+
+  // Return cleanup function
+  return () => controller.abort();
+}
+
+/**
+ * Generate suggestions on-demand for a lead
+ */
+export async function generateLeadSuggestions(leadId: number): Promise<{
+  suggested_comment: string;
+  suggested_dm: string;
+  cached: boolean;
+}> {
+  const response = await authFetch(
+    `${baseUrl}/api/v1/reddit/leads/${leadId}/generate-suggestions`,
+    {
+      method: "POST",
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to generate suggestions");
+  }
+
+  return response.json();
+}
+
 export async function deleteCampaign(campaignId: number): Promise<void> {
   const response = await authFetch(`${baseUrl}/api/v1/reddit/campaigns/${campaignId}`, {
     method: "DELETE"
@@ -175,4 +310,50 @@ export async function deleteCampaign(campaignId: number): Promise<void> {
   if (!response.ok) {
     throw new Error("Failed to delete campaign");
   }
+}
+
+// ======= Stripe Billing API =======
+
+export interface CheckoutSessionResponse {
+  checkout_url: string;
+  session_id: string;
+}
+
+export interface PortalSessionResponse {
+  portal_url: string;
+}
+
+export async function createCheckoutSession(
+  tierCode: string,
+  successUrl?: string,
+  cancelUrl?: string
+): Promise<CheckoutSessionResponse> {
+  const response = await authFetch(`${baseUrl}/api/v1/billing/create-checkout-session`, {
+    method: "POST",
+    body: JSON.stringify({
+      tier_code: tierCode,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to create checkout session" }));
+    throw new Error(error.detail || "Failed to create checkout session");
+  }
+
+  return response.json();
+}
+
+export async function createPortalSession(): Promise<PortalSessionResponse> {
+  const response = await authFetch(`${baseUrl}/api/v1/billing/create-portal-session`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to create portal session" }));
+    throw new Error(error.detail || "Failed to create portal session");
+  }
+
+  return response.json();
 }

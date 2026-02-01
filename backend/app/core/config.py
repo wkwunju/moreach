@@ -22,9 +22,13 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24  # Email verification token expires in 24 hours
 
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+
     # Email (SendGrid)
     SENDGRID_API_KEY: str = ""
-    SENDGRID_FROM_EMAIL: str = "noreply@moreach.ai"
+    SENDGRID_FROM_EMAIL: str = "hello@moreach.ai"
     FRONTEND_URL: str = "http://localhost:3000"
 
     database_url: str = "sqlite:///./app.db"
@@ -74,12 +78,48 @@ class Settings(BaseSettings):
     # https://api.apify.com/v2/acts/harshmaur~reddit-scraper/runs
     apify_reddit_scraper_actor: str = "harshmaur~reddit-scraper"
 
+    # Reddit API Provider: "official" (Reddit API) or "rapidapi" (RapidAPI)
+    reddit_api_provider: str = "official"
+
+    # Official Reddit API
     reddit_client_id: str = ""
     reddit_client_secret: str = ""
     reddit_user_agent: str = "moreach:lead-gen:v1.0"
 
+    # RapidAPI Reddit (Plan B)
+    rapidapi_key: str = ""
+    rapidapi_reddit_host: str = ""  # e.g., "reddit-scraper2.p.rapidapi.com"
+
     max_candidates: int = 40
     min_search_results: int = 8
+
+    # Stripe
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
+
+    # Stripe Price IDs (set these in .env)
+    STRIPE_PRICE_STARTER_MONTHLY: str = ""
+    STRIPE_PRICE_STARTER_ANNUALLY: str = ""
+    STRIPE_PRICE_GROWTH_MONTHLY: str = ""
+    STRIPE_PRICE_GROWTH_ANNUALLY: str = ""
+    STRIPE_PRICE_PRO_MONTHLY: str = ""
+    STRIPE_PRICE_PRO_ANNUALLY: str = ""
+
+    # Scheduled Polling Configuration
+    # Enable/disable scheduled polling (set to False for local development)
+    ENABLE_SCHEDULED_POLLING: bool = False
+
+    # Poll times in UTC hours (comma-separated)
+    # Starter plans: 2x/day - Europe morning (8am CET) and US West Coast morning (8am PST)
+    POLL_TIMES_STARTER: str = "7,16"
+
+    # Growth/Pro plans: 4x/day - more comprehensive coverage
+    # UTC 07:00 = Europe 8am CET
+    # UTC 11:00 = Europe afternoon, US East Coast morning
+    # UTC 16:00 = US West Coast morning (8am PST)
+    # UTC 22:00 = US afternoon, Asia morning
+    POLL_TIMES_PREMIUM: str = "7,11,16,22"
 
 
 settings = Settings()

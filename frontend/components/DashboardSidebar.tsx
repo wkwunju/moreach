@@ -2,22 +2,18 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { User, getTrialDaysRemaining, isTrialActive } from "@/lib/auth";
+import UserMenu from "./UserMenu";
+import BillingDialog from "./BillingDialog";
 
 interface SidebarProps {
-  user?: any;
+  user?: User | null;
 }
 
 export default function DashboardSidebar({ user }: SidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
-  const [showUserMenu, setShowUserMenu] = useState(false);
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/");
-  };
+  const [showBillingDialog, setShowBillingDialog] = useState(false);
 
   const navItems = [
     {
@@ -111,83 +107,179 @@ export default function DashboardSidebar({ user }: SidebarProps) {
         </div>
       </div>
 
-      {/* User Menu & Settings */}
-      <div className="border-t border-gray-200">
-        {user && (
-          <div className="relative">
-            <button
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              className="w-full flex items-center gap-3 px-6 py-4 hover:bg-gray-50 transition-colors"
-            >
-              <div className="w-8 h-8 bg-gray-900 text-white rounded-full flex items-center justify-center font-semibold text-sm">
-                {user.full_name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase()}
-              </div>
-              <div className="flex-1 text-left">
-                <div className="text-sm font-medium text-gray-900 truncate">
-                  {user.full_name || "User"}
-                </div>
-                <div className="text-xs text-gray-500 truncate">{user.email}</div>
-              </div>
-              <svg
-                className={`w-4 h-4 text-gray-400 transition-transform ${
-                  showUserMenu ? "rotate-180" : ""
-                }`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
-            </button>
+      {/* Subscription Status */}
+      {user && (
+        <SubscriptionStatus
+          user={user}
+          onSubscribe={() => setShowBillingDialog(true)}
+        />
+      )}
 
-            {showUserMenu && (
-              <div className="absolute bottom-full left-0 right-0 mb-2 mx-3 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
-                <Link
-                  href="/settings"
-                  className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                  onClick={() => setShowUserMenu(false)}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                  </svg>
-                  Settings
-                </Link>
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                    />
-                  </svg>
-                  Log out
-                </button>
-              </div>
-            )}
-          </div>
+      {/* User Menu */}
+      <div className="border-t border-gray-200 px-3 py-3">
+        <UserMenu
+          user={user ?? null}
+          position="top"
+          compact
+          onBilling={() => setShowBillingDialog(true)}
+        />
+      </div>
+
+      {/* Billing Dialog */}
+      <BillingDialog
+        isOpen={showBillingDialog}
+        onClose={() => setShowBillingDialog(false)}
+        user={user ?? null}
+      />
+    </div>
+  );
+}
+
+function SubscriptionStatus({
+  user,
+  onSubscribe,
+}: {
+  user: User;
+  onSubscribe: () => void;
+}) {
+  const trialActive = isTrialActive(user);
+  const trialDays = getTrialDaysRemaining(user);
+  const currentTier = user.subscription_tier;
+
+  // Determine subscription status
+  // Support both old format (MONTHLY, ANNUALLY) and new format (STARTER_MONTHLY, etc.)
+  const isPaid = currentTier === "MONTHLY" ||
+    currentTier === "ANNUALLY" ||
+    currentTier?.startsWith("STARTER") ||
+    currentTier?.startsWith("GROWTH") ||
+    currentTier?.startsWith("PRO");
+
+  const isExpired = currentTier === "EXPIRED" ||
+    (currentTier === "FREE_TRIAL" && !trialActive);
+
+  // Get display info based on status
+  const getStatusInfo = () => {
+    if (isPaid) {
+      // Determine plan name and billing cycle
+      let tierName = "Pro";
+      let billingCycle = "Monthly";
+
+      if (currentTier === "MONTHLY") {
+        tierName = "Pro";
+        billingCycle = "Monthly";
+      } else if (currentTier === "ANNUALLY") {
+        tierName = "Pro";
+        billingCycle = "Annual";
+      } else if (currentTier?.includes("_")) {
+        tierName = currentTier.split("_")[0];
+        tierName = tierName.charAt(0) + tierName.slice(1).toLowerCase();
+        billingCycle = currentTier.includes("ANNUALLY") ? "Annual" : "Monthly";
+      }
+
+      return {
+        title: `${tierName} Plan`,
+        subtitle: `${billingCycle} subscription active`,
+        showButton: false,
+        bgColor: "bg-green-50",
+        iconColor: "text-green-500",
+        titleColor: "text-green-700",
+        icon: (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        ),
+      };
+    }
+
+    if (trialActive) {
+      return {
+        title: "Free Trial Active",
+        subtitle: `${trialDays} day${trialDays !== 1 ? "s" : ""} left in trial. Subscribe to keep real-time monitoring active.`,
+        showButton: true,
+        bgColor: "bg-orange-50",
+        iconColor: "text-orange-500",
+        titleColor: "text-orange-700",
+        icon: (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        ),
+      };
+    }
+
+    if (isExpired) {
+      return {
+        title: "Trial Expired",
+        subtitle: "Subscribe to continue monitoring Reddit for leads.",
+        showButton: true,
+        bgColor: "bg-red-50",
+        iconColor: "text-red-500",
+        titleColor: "text-red-700",
+        icon: (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        ),
+      };
+    }
+
+    // Fallback: show trial status for FREE_TRIAL or unknown tiers
+    if (currentTier === "FREE_TRIAL" || !currentTier) {
+      return {
+        title: "Free Trial",
+        subtitle: "Subscribe to unlock all features.",
+        showButton: true,
+        bgColor: "bg-orange-50",
+        iconColor: "text-orange-500",
+        titleColor: "text-orange-700",
+        icon: (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        ),
+      };
+    }
+
+    return null;
+  };
+
+  const status = getStatusInfo();
+
+  // Always show something - fallback to trial if no status
+  const displayStatus = status || {
+    title: "Free Trial",
+    subtitle: "Subscribe to unlock all features.",
+    showButton: true,
+    bgColor: "bg-orange-50",
+    iconColor: "text-orange-500",
+    titleColor: "text-orange-700",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  };
+
+  return (
+    <div className="px-3 pb-3">
+      <div className={`${displayStatus.bgColor} rounded-xl p-4`}>
+        <div className="flex items-start gap-2 mb-2">
+          <span className={displayStatus.iconColor}>{displayStatus.icon}</span>
+          <span className={`font-semibold ${displayStatus.titleColor}`}>{displayStatus.title}</span>
+        </div>
+        <p className="text-sm text-gray-600 mb-3">{displayStatus.subtitle}</p>
+        {displayStatus.showButton && (
+          <button
+            onClick={onSubscribe}
+            className="w-full flex items-center justify-center gap-2 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            </svg>
+            Subscribe Now
+          </button>
         )}
       </div>
     </div>
   );
 }
-

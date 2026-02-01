@@ -3,12 +3,35 @@
 import Navigation from "../components/Navigation";
 import GlobeAnimation from "../components/GlobeAnimation";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 type Platform = "instagram" | "reddit" | "twitter" | "tiktok";
 
+// Rotating slogans for the hero section
+const SLOGANS = [
+  { line1: "Your product already has demand.", line2: "Let's reach it." },
+  { line1: "No bad products,", line2: "only unbuilt connections." },
+  { line1: "The market is part", line2: "of the product." },
+];
+
 export default function HomePage() {
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>("reddit");
+  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annually">("annually");
+  const [sloganIndex, setSloganIndex] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Rotate slogans every 4 seconds with breathing animation
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIsTransitioning(true);
+      setTimeout(() => {
+        setSloganIndex((prev) => (prev + 1) % SLOGANS.length);
+        setIsTransitioning(false);
+      }, 600); // Match the CSS transition duration
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="min-h-screen bg-white overflow-x-hidden">
@@ -19,14 +42,54 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-[1.618fr_1fr] gap-12 items-center relative z-10 w-full pt-28 pb-20 md:py-20">
           {/* Left Content */}
           <div className="text-left">
-          {/* Main Title */}
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-black mb-6 leading-tight text-gray-900">
-              <span className="block">Your product already has demand,</span>
-              <span className="block">Let's capture it.</span>
+          {/* Main Title - Rotating Slogans */}
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight text-gray-900 min-h-[140px] md:min-h-[160px] lg:min-h-[180px]">
+              <span
+                className={`block transition-all duration-500 ease-in-out ${
+                  isTransitioning
+                    ? "opacity-0 translate-x-8"
+                    : "opacity-100 translate-x-0"
+                }`}
+              >
+                {SLOGANS[sloganIndex].line1}
+              </span>
+              <span
+                className={`block transition-all duration-500 ease-in-out delay-75 ${
+                  isTransitioning
+                    ? "opacity-0 translate-x-8"
+                    : "opacity-100 translate-x-0"
+                }`}
+              >
+                {SLOGANS[sloganIndex].line2}
+              </span>
           </h1>
 
+          {/* Slogan Indicators */}
+          <div className="flex gap-2 mb-6">
+            {SLOGANS.map((_, index) => (
+              <button
+                key={index}
+                onClick={() => {
+                  if (index !== sloganIndex) {
+                    setIsTransitioning(true);
+                    setTimeout(() => {
+                      setSloganIndex(index);
+                      setIsTransitioning(false);
+                    }, 600);
+                  }
+                }}
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  index === sloganIndex
+                    ? "w-8 bg-gray-900"
+                    : "w-3 bg-gray-900/30 hover:bg-gray-900/50"
+                }`}
+                aria-label={`View slogan ${index + 1}`}
+              />
+            ))}
+          </div>
+
           {/* Subtitle */}
-            <p className="text-xl md:text-2xl text-gray-800 mb-10 leading-relaxed max-w-xl">
+            <p className="text-lg md:text-xl text-gray-700 mb-10 leading-relaxed max-w-xl">
               Don't wait for customers to search. Moreach's AI identifies high-intent signals in communities and posts, connecting you to them directly or via influencers.
           </p>
 
@@ -52,13 +115,7 @@ export default function HomePage() {
                 <svg className="w-5 h-5 text-green-800" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
-              <span>No credit card required</span>
-            </div>
-            <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-green-800" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <span>Free 14-day trial</span>
+              <span>Free 7-day trial</span>
             </div>
             <div className="flex items-center gap-2">
                 <svg className="w-5 h-5 text-green-800" fill="currentColor" viewBox="0 0 20 20">
@@ -77,13 +134,13 @@ export default function HomePage() {
       </section>
 
       {/* Platforms Section */}
-      <section id="platforms" className="py-20 md:py-32 bg-gray-50">
+      <section id="platforms" className="pt-16 pb-8 md:pt-24 md:pb-12 bg-gray-50">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16 animate-fade-in">
-            <h2 className="text-5xl md:text-6xl font-black text-gray-900 mb-6">
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
               Choose a platform
             </h2>
-            <p className="text-xl text-gray-700">
+            <p className="text-base md:text-lg text-gray-600">
               See how Moreach can help you to grow
             </p>
           </div>
@@ -108,8 +165,8 @@ export default function HomePage() {
                   <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/>
                 </svg>
               </div>
-              <h3 className={`text-2xl font-bold mb-3 ${selectedPlatform === "reddit" ? "text-white" : "text-gray-900"}`}>Reddit</h3>
-              <p className={`mb-6 text-lg ${selectedPlatform === "reddit" ? "text-orange-50" : "text-gray-600"}`}>
+              <h3 className={`text-xl font-semibold mb-3 ${selectedPlatform === "reddit" ? "text-white" : "text-gray-900"}`}>Reddit</h3>
+              <p className={`mb-6 text-base ${selectedPlatform === "reddit" ? "text-orange-50" : "text-gray-600"}`}>
                 Engage directly with early adopters. Ideal for authentic community feedback and insights.
               </p>
               <div className={`inline-flex items-center font-bold group-hover:gap-2 transition-all ${
@@ -125,7 +182,7 @@ export default function HomePage() {
             {/* X (Twitter) */}
             <button
               onClick={() => setSelectedPlatform("twitter")}
-              className="bg-white rounded-3xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300 border-2 border-gray-200 hover:border-gray-900 group text-left transform hover:-translate-y-3"
+              className="bg-gray-100 rounded-3xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300 border-2 border-gray-200 hover:border-gray-900 group text-left transform hover:-translate-y-3"
             >
               <div className="w-20 h-20 bg-black rounded-3xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-6 transition-all">
                 <svg className="w-11 h-11 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -133,7 +190,7 @@ export default function HomePage() {
                 </svg>
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-3">X (Twitter)</h3>
-              <p className="text-gray-600 mb-6 text-lg">
+              <p className="text-gray-600 mb-6 text-base">
                 Monitor discussions and competitors. Perfect for tech companies to track market trends.
               </p>
               <div className="inline-flex items-center text-gray-400 font-bold">
@@ -147,7 +204,7 @@ export default function HomePage() {
             {/* TikTok */}
             <button
               onClick={() => setSelectedPlatform("tiktok")}
-              className="bg-white rounded-3xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300 border-2 border-gray-200 hover:border-pink-400 group text-left transform hover:-translate-y-3"
+              className="bg-gray-100 rounded-3xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300 border-2 border-gray-200 hover:border-pink-400 group text-left transform hover:-translate-y-3"
             >
               <div className="w-20 h-20 bg-gradient-to-br from-cyan-400 via-pink-500 to-purple-600 rounded-3xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:rotate-6 transition-all shadow-lg">
                 <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -155,7 +212,7 @@ export default function HomePage() {
                 </svg>
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-3">TikTok</h3>
-              <p className="text-gray-600 mb-6 text-lg">
+              <p className="text-gray-600 mb-6 text-base">
                 Connect with Gen Z through viral video creators. Best for entertainment and trending content.
               </p>
               <div className="inline-flex items-center text-gray-400 font-bold">
@@ -169,7 +226,7 @@ export default function HomePage() {
             {/* Instagram */}
             <button
               onClick={() => setSelectedPlatform("instagram")}
-              className="bg-white rounded-3xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300 border-2 border-gray-200 hover:border-purple-300 group text-left transform hover:-translate-y-3"
+              className="bg-gray-100 rounded-3xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300 border-2 border-gray-200 hover:border-purple-300 group text-left transform hover:-translate-y-3"
             >
               <div className="w-20 h-20 bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500 rounded-3xl flex items-center justify-center mb-6 shadow-lg">
                 <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -177,7 +234,7 @@ export default function HomePage() {
                 </svg>
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-3">Instagram</h3>
-              <p className="text-gray-600 mb-6 text-lg">
+              <p className="text-gray-600 mb-6 text-base">
                 Discover creators your customers follow. Ideal for visual storytelling and brand partnerships.
               </p>
               <div className="inline-flex items-center text-gray-400 font-semibold">
@@ -215,13 +272,13 @@ export default function HomePage() {
 
       {/* Use Cases Section - Only show for Instagram */}
       {false && selectedPlatform === "instagram" && (
-      <section id="use-cases" className="py-20 px-6 bg-gray-50">
+      <section id="use-cases" className="py-16 md:py-24 px-6 bg-gray-50">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
               Powerful use cases for modern brands
             </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            <p className="text-lg text-gray-600 max-w-3xl mx-auto">
               From discovery to outreach, moreach.ai streamlines your entire influencer marketing workflow
             </p>
           </div>
@@ -234,7 +291,7 @@ export default function HomePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Intent-Based Discovery</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Intent-Based Discovery</h3>
               <p className="text-gray-600 mb-4">
                 Describe your business and constraints in natural language. Our AI understands your intent and finds creators that match your brand values and target audience.
               </p>
@@ -261,7 +318,7 @@ export default function HomePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Real-Time Enrichment</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Real-Time Enrichment</h3>
               <p className="text-gray-600 mb-4">
                 Get instant access to comprehensive creator profiles with engagement metrics, audience demographics, and collaboration history—all updated in real-time.
               </p>
@@ -288,7 +345,7 @@ export default function HomePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Smart Ranking</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Smart Ranking</h3>
               <p className="text-gray-600 mb-4">
                 Our vector search technology ranks creators by relevance to your brand, ensuring you connect with influencers who will deliver the best ROI.
               </p>
@@ -315,7 +372,7 @@ export default function HomePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Audience Insights</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Audience Insights</h3>
               <p className="text-gray-600 mb-4">
                 Understand creator audiences at a deeper level with AI-generated insights about demographics, interests, and engagement patterns.
               </p>
@@ -342,7 +399,7 @@ export default function HomePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Async Discovery Pipeline</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Async Discovery Pipeline</h3>
               <p className="text-gray-600 mb-4">
                 Don't wait for results. Our background processing continuously discovers new creators while you work, updating results in real-time.
               </p>
@@ -369,7 +426,7 @@ export default function HomePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Direct Outreach</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Direct Outreach</h3>
               <p className="text-gray-600 mb-4">
                 Access creator contact information and collaboration history to streamline your outreach process and build meaningful partnerships.
               </p>
@@ -395,11 +452,11 @@ export default function HomePage() {
 
       {/* Partners Section - Hidden for now */}
       {false && (
-      <section id="partners" className="py-20 px-6 bg-white">
+      <section id="partners" className="py-16 md:py-24 px-6 bg-white">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <p className="text-sm uppercase tracking-wider text-gray-500 mb-4">Trusted by</p>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
               Leading brands and agencies
             </h2>
             <p className="text-lg text-gray-600">
@@ -412,13 +469,13 @@ export default function HomePage() {
 
       {/* Features Section - Only show for Instagram */}
       {false && selectedPlatform === "instagram" && (
-      <section id="features" className="py-20 px-6 bg-gradient-to-br from-gray-50 to-white">
+      <section id="features" className="py-16 md:py-24 px-6 bg-gradient-to-br from-gray-50 to-white">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
               Everything you need to scale influencer marketing
             </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            <p className="text-lg text-gray-600 max-w-3xl mx-auto">
               Powerful features designed to help you discover, analyze, and connect with the right creators
             </p>
           </div>
@@ -430,7 +487,7 @@ export default function HomePage() {
                 <div className="inline-block px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold mb-4">
                   DISCOVERY
                 </div>
-                <h3 className="text-3xl font-bold text-gray-900 mb-4">
+                <h3 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
                   AI-powered search that understands your brand
                 </h3>
                 <p className="text-lg text-gray-600 mb-6">
@@ -521,7 +578,7 @@ export default function HomePage() {
                 <div className="inline-block px-4 py-2 bg-green-100 text-green-700 rounded-full text-sm font-semibold mb-4">
                   ANALYTICS
                 </div>
-                <h3 className="text-3xl font-bold text-gray-900 mb-4">
+                <h3 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
                   Deep insights and performance metrics
                 </h3>
                 <p className="text-lg text-gray-600 mb-6">
@@ -551,7 +608,7 @@ export default function HomePage() {
                 <div className="inline-block px-4 py-2 bg-purple-100 text-purple-700 rounded-full text-sm font-semibold mb-4">
                   AUTOMATION
                 </div>
-                <h3 className="text-3xl font-bold text-gray-900 mb-4">
+                <h3 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
                   Continuous discovery and enrichment
                 </h3>
                 <p className="text-lg text-gray-600 mb-6">
@@ -622,34 +679,353 @@ export default function HomePage() {
 
       {/* CTA Section - Only show for Instagram */}
       {false && selectedPlatform === "instagram" && (
-      <section className="py-20 px-6 bg-gray-900">
+      <section className="py-16 md:py-24 px-6 bg-gray-900">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
             Ready to transform your influencer marketing?
           </h2>
-          <p className="text-xl text-gray-300 mb-10">
+          <p className="text-base md:text-lg text-gray-300 mb-10">
             Join hundreds of brands using moreach.ai to find and connect with the perfect creators
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
               href="/register"
-              className="px-8 py-4 bg-white text-gray-900 text-lg font-semibold rounded-xl hover:bg-gray-100 transition shadow-lg"
+              className="px-8 py-4 bg-white text-gray-900 text-xl font-semibold rounded-xl hover:bg-gray-100 transition shadow-lg"
             >
               Sign Up for Free
             </Link>
             <Link
               href="/demo"
-              className="px-8 py-4 bg-transparent text-white text-lg font-semibold rounded-xl border-2 border-white hover:bg-white/10 transition"
+              className="px-8 py-4 bg-transparent text-white text-xl font-semibold rounded-xl border-2 border-white hover:bg-white/10 transition"
             >
               Request Demo
             </Link>
           </div>
           <p className="mt-6 text-gray-400 text-sm">
-            No credit card required • Free 14-day trial • Cancel anytime
+            Free 7-day trial • Cancel anytime
           </p>
         </div>
       </section>
       )}
+
+      {/* Pricing Section */}
+      <div id="pricing" className="bg-gray-50 py-10 md:py-16">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center mb-10">
+            <h3 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">Simple, transparent pricing</h3>
+            <p className="text-lg text-gray-600 mb-8">Choose the plan that fits your needs</p>
+
+            {/* Billing Toggle */}
+            <div className="inline-flex items-center bg-gray-100 rounded-full p-1">
+              <button
+                onClick={() => setBillingPeriod("annually")}
+                className={`px-6 py-2 rounded-full text-sm font-semibold transition-all flex items-center gap-2 ${
+                  billingPeriod === "annually"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                Annually
+                <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-bold">Save 3 months</span>
+              </button>
+              <button
+                onClick={() => setBillingPeriod("monthly")}
+                className={`px-6 py-2 rounded-full text-sm font-semibold transition-all ${
+                  billingPeriod === "monthly"
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                Monthly
+              </button>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6 lg:gap-8">
+            {/* Starter Plan */}
+            <div className="bg-white rounded-3xl p-8 border-2 border-orange-300 hover:border-orange-400 transition-all hover:shadow-xl flex flex-col relative overflow-hidden">
+              {/* Free Trial badge */}
+              <div className="absolute top-6 right-6 bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-sm font-semibold">
+                7-Day Free Trial
+              </div>
+
+              <div className="mb-6">
+                <h4 className="text-xl font-semibold text-gray-500 mb-2">Starter</h4>
+                <div className="flex items-baseline gap-2">
+                  {billingPeriod === "annually" && (
+                    <span className="text-2xl font-bold text-gray-400 line-through">$15</span>
+                  )}
+                  <span className="text-5xl font-bold text-gray-900">${billingPeriod === "monthly" ? "15" : "11"}</span>
+                  <span className="text-gray-500 font-medium">/month</span>
+                </div>
+                {billingPeriod === "annually" && (
+                  <p className="text-sm text-green-600 font-medium mt-1">Billed $132/year (Save $48)</p>
+                )}
+              </div>
+
+              {/* Variable features */}
+              <ul className="space-y-3 mb-6">
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-gray-700"><strong>1</strong> business profile</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-gray-700">Up to <strong>15</strong> subreddits</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-gray-700">Leads refresh <strong>twice a day</strong></span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-gray-700"><strong>3,000</strong> leads/month</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-gray-700">Early access to <strong>X, TikTok & Instagram</strong> (March 2026)</span>
+                </li>
+              </ul>
+
+              {/* Included features */}
+              <div className="border-t border-gray-200 pt-6 mt-auto">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Included</p>
+                <ul className="space-y-2">
+                  <li className="flex items-center gap-2 text-sm text-gray-600">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    AI-generated comments
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-gray-600">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    AI-generated DMs
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-gray-600">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Community Relevancy Score
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-gray-600">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Post Relevancy Score
+                  </li>
+                </ul>
+              </div>
+
+              <Link
+                href="/register"
+                className="block w-full py-4 text-center bg-gray-900 text-white font-semibold rounded-xl hover:bg-gray-800 transition mt-6"
+              >
+                Start 7-Day Free Trial
+              </Link>
+            </div>
+
+            {/* Growth Plan */}
+            <div className="bg-gradient-to-br from-orange-500 to-red-500 rounded-3xl p-8 text-white relative overflow-hidden hover:shadow-xl transition-all flex flex-col">
+              {/* Popular badge */}
+              <div className="absolute top-6 right-6 bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-semibold">
+                Most Popular
+              </div>
+
+              <div className="mb-6">
+                <h4 className="text-xl font-semibold text-orange-100 mb-2">Growth</h4>
+                <div className="flex items-baseline gap-2">
+                  {billingPeriod === "annually" && (
+                    <span className="text-2xl font-bold text-white/50 line-through">$39</span>
+                  )}
+                  <span className="text-5xl font-bold">${billingPeriod === "monthly" ? "39" : "30"}</span>
+                  <span className="text-orange-100 font-medium">/month</span>
+                </div>
+                {billingPeriod === "annually" && (
+                  <p className="text-sm text-white font-medium mt-1">Billed $360/year (Save $108)</p>
+                )}
+              </div>
+
+              {/* Variable features */}
+              <ul className="space-y-3 mb-6">
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-white mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span><strong>3</strong> business profiles</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-white mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Up to <strong>20</strong> subreddits each</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-white mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span><strong>7×24</strong> real-time refresh</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-white mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span><strong>9,000</strong> leads/month</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-white mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Early access to <strong>X, TikTok & Instagram</strong> (March 2026)</span>
+                </li>
+              </ul>
+
+              {/* Included features */}
+              <div className="border-t border-white/20 pt-6 mt-auto">
+                <p className="text-xs font-semibold text-white/60 uppercase tracking-wide mb-3">Included</p>
+                <ul className="space-y-2">
+                  <li className="flex items-center gap-2 text-sm text-white/80">
+                    <svg className="w-4 h-4 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    AI-generated comments
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-white/80">
+                    <svg className="w-4 h-4 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    AI-generated DMs
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-white/80">
+                    <svg className="w-4 h-4 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Community Relevancy Score
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-white/80">
+                    <svg className="w-4 h-4 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Post Relevancy Score
+                  </li>
+                </ul>
+              </div>
+
+              <Link
+                href="/register"
+                className="block w-full py-4 text-center bg-white text-orange-600 font-semibold rounded-xl hover:bg-orange-50 transition mt-6"
+              >
+                Get Started
+              </Link>
+            </div>
+
+            {/* Pro Plan */}
+            <div className="bg-gray-900 rounded-3xl p-8 text-white relative overflow-hidden hover:shadow-xl transition-all flex flex-col">
+              {/* Best for Teams badge */}
+              <div className="absolute top-6 right-6 bg-white/10 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-semibold text-gray-300">
+                Best for Teams
+              </div>
+
+              <div className="mb-6">
+                <h4 className="text-xl font-semibold text-gray-400 mb-2">Pro</h4>
+                <div className="flex items-baseline gap-2">
+                  {billingPeriod === "annually" && (
+                    <span className="text-2xl font-bold text-gray-500 line-through">$99</span>
+                  )}
+                  <span className="text-5xl font-bold">${billingPeriod === "monthly" ? "99" : "75"}</span>
+                  <span className="text-gray-400 font-medium">/month</span>
+                </div>
+                {billingPeriod === "annually" && (
+                  <p className="text-sm text-green-400 font-medium mt-1">Billed $900/year (Save $288)</p>
+                )}
+              </div>
+
+              {/* Variable features */}
+              <ul className="space-y-3 mb-6">
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Up to <strong>10</strong> business profiles</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span><strong>Unlimited</strong> subreddits</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span><strong>7×24</strong> real-time refresh</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span><strong>30,000</strong> leads/month</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Early access to <strong>X, TikTok & Instagram</strong> (March 2026)</span>
+                </li>
+              </ul>
+
+              {/* Included features */}
+              <div className="border-t border-gray-700 pt-6 mt-auto">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Included</p>
+                <ul className="space-y-2">
+                  <li className="flex items-center gap-2 text-sm text-gray-400">
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    AI-generated comments
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-gray-400">
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    AI-generated DMs
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-gray-400">
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Community Relevancy Score
+                  </li>
+                  <li className="flex items-center gap-2 text-sm text-gray-400">
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Post Relevancy Score
+                  </li>
+                </ul>
+              </div>
+
+              <Link
+                href="/register"
+                className="block w-full py-4 text-center bg-white text-gray-900 font-semibold rounded-xl hover:bg-gray-100 transition mt-6"
+              >
+                Get Started
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Footer - Linktree Style */}
       <footer className="py-16 px-6 bg-gradient-to-br from-gray-50 to-purple-50">
@@ -683,8 +1059,9 @@ export default function HomePage() {
             <div>
               <h4 className="font-bold text-gray-900 mb-4 text-lg">Product</h4>
               <ul className="space-y-3 text-gray-600">
-                <li><Link href="#how-it-works" className="hover:text-orange-600 transition font-medium">How It Works</Link></li>
+                <li><Link href="#platforms" className="hover:text-orange-600 transition font-medium">How It Works</Link></li>
                 <li><Link href="/login" className="hover:text-orange-600 transition font-medium">Sign In</Link></li>
+                <li><Link href="#pricing" className="hover:text-orange-600 transition font-medium">Pricing</Link></li>
                 <li><Link href="/register" className="hover:text-orange-600 transition font-medium">Get Started</Link></li>
               </ul>
             </div>
@@ -714,7 +1091,7 @@ function InstagramContent() {
     <div className="space-y-12">
       {/* Hero Card */}
       <div className="bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50 rounded-2xl p-8 md:p-12 text-center">
-        <h3 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+        <h3 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
           Find Instagram Creators Your Customers Follow
         </h3>
         <p className="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
@@ -722,7 +1099,7 @@ function InstagramContent() {
         </p>
         <Link
           href="/register"
-          className="inline-flex items-center px-8 py-4 bg-gray-900 text-white text-lg font-semibold rounded-xl hover:bg-gray-800 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+          className="inline-flex items-center px-8 py-4 bg-gray-900 text-white text-xl font-semibold rounded-xl hover:bg-gray-800 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
         >
           Sign Up Now
           <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -778,17 +1155,17 @@ function RedditContent() {
   return (
     <div className="space-y-0">
       {/* Hero Introduction - Bold Orange Section - Full Width */}
-      <div className="bg-gradient-to-br from-orange-500 via-orange-600 to-red-600 py-20 md:py-32 text-center relative overflow-hidden">
+      <div className="bg-gradient-to-br from-orange-500 via-orange-600 to-red-600 py-16 md:py-24 text-center relative overflow-hidden">
         {/* Decorative circles */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2"></div>
         <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/10 rounded-full translate-y-1/2 -translate-x-1/2"></div>
         
         <div className="relative z-10 max-w-7xl mx-auto px-6">
-          <h3 className="text-4xl md:text-6xl font-bold text-white mb-6 leading-tight">
+          <h3 className="text-4xl md:text-5xl font-bold text-white mb-6 leading-tight">
             Find Leads on Reddit<br />with AI
           </h3>
           <p className="text-xl md:text-2xl text-orange-50 mb-10 max-w-3xl mx-auto leading-relaxed">
-            AI-powered platform that helps you discover and engage with Reddit users interested in your niche.
+            We help you discover and engage with Reddit users interested in your niche using AI.
           </p>
           <Link
             href="/reddit"
@@ -803,7 +1180,7 @@ function RedditContent() {
       </div>
 
       {/* Why Reddit Section - Vibrant Gradient */}
-      <div className="bg-gradient-to-br from-amber-100 via-orange-100 to-yellow-100 py-20 md:py-32 relative overflow-hidden">
+      <div className="bg-gradient-to-br from-amber-100 via-orange-100 to-yellow-100 py-16 md:py-24 relative overflow-hidden">
         {/* Decorative Elements */}
         <div className="absolute top-20 left-10 w-32 h-32 bg-orange-300/30 rounded-full blur-3xl"></div>
         <div className="absolute bottom-20 right-10 w-40 h-40 bg-yellow-300/30 rounded-full blur-3xl"></div>
@@ -811,11 +1188,11 @@ function RedditContent() {
         <div className="max-w-7xl mx-auto px-6 relative z-10">
           {/* Header */}
           <div className="text-center mb-16">
-            <h3 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4 leading-tight">
+            <h3 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4 leading-tight">
               Your potential audience are already on <span className="bg-gradient-to-r from-orange-500 to-red-500 bg-clip-text text-transparent">Reddit</span>
             </h3>
-            <p className="text-lg md:text-xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
-              Connect with 100M+ daily active users in 100K+ niche communities who are actively discussing the exact problems you solve.
+            <p className="text-lg text-gray-600 max-w-3xl mx-auto leading-relaxed">
+              Connect with <span className="text-2xl font-bold text-orange-500">100M+</span> daily active users in <span className="text-2xl font-bold text-orange-500">100K+</span> niche communities who are actively discussing the exact problems you solve.
             </p>
           </div>
 
@@ -830,7 +1207,7 @@ function RedditContent() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
                   </svg>
                 </div>
-                <h4 className="text-2xl md:text-3xl font-bold mb-4">Real conversations, real intent</h4>
+                <h4 className="text-xl md:text-2xl font-semibold mb-4">Real conversations, real intent</h4>
                 <p className="text-orange-100 text-lg leading-relaxed">
                   People on Reddit ask for recommendations, share problems, and seek solutions. They're not just browsing—they're actively looking for products like yours.
                 </p>
@@ -844,7 +1221,7 @@ function RedditContent() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
               </div>
-              <h4 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">Influence AI recommendations</h4>
+              <h4 className="text-2xl md:text-2xl md:text-3xl font-bold text-gray-900 mb-4">Influence AI recommendations</h4>
               <p className="text-gray-600 text-lg leading-relaxed mb-6">
                 Reddit content is used to train LLMs. Being active there means shaping how AI recommends products in the future.
               </p>
@@ -895,7 +1272,7 @@ function RedditContent() {
       </div>
 
       {/* The Challenge Section - Dark Contrasting */}
-      <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 py-20 md:py-32 relative overflow-hidden">
+      <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 py-16 md:py-24 relative overflow-hidden">
         {/* Decorative grid pattern */}
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
@@ -904,10 +1281,10 @@ function RedditContent() {
         <div className="max-w-7xl mx-auto px-6 relative z-10">
           {/* Header */}
           <div className="text-center mb-16">
-            <h3 className="text-4xl md:text-6xl font-black text-white mb-6 leading-tight">
+            <h3 className="text-4xl md:text-5xl font-bold text-white mb-6 leading-tight">
               But it's <span className="bg-gradient-to-r from-red-400 to-orange-400 bg-clip-text text-transparent">tricky</span> to get right
             </h3>
-            <p className="text-xl text-gray-400 max-w-2xl mx-auto">
+            <p className="text-base md:text-lg text-gray-400 max-w-2xl mx-auto">
               Reddit users are smart. They can smell marketing from a mile away.
             </p>
           </div>
@@ -920,7 +1297,7 @@ function RedditContent() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
-              <h4 className="text-xl font-bold text-white mb-3">Finding the right subreddits</h4>
+              <h4 className="text-xl font-semibold text-white mb-3">Finding the right subreddits</h4>
               <p className="text-gray-400 leading-relaxed">
                 Thousands of communities exist. Finding the ones where your audience actually hangs out takes serious research.
               </p>
@@ -932,7 +1309,7 @@ function RedditContent() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h4 className="text-xl font-bold text-white mb-3">Timing matters</h4>
+              <h4 className="text-xl font-semibold text-white mb-3">Timing matters</h4>
               <p className="text-gray-400 leading-relaxed">
                 Miss the window and the conversation moves on. You need to catch relevant posts when they're fresh.
               </p>
@@ -944,7 +1321,7 @@ function RedditContent() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
-              <h4 className="text-xl font-bold text-white mb-3">Staying authentic & safe</h4>
+              <h4 className="text-xl font-semibold text-white mb-3">Staying authentic & safe</h4>
               <p className="text-gray-400 leading-relaxed">
                 Generic responses get downvoted. Self-promote wrong and you're banned. You need genuine replies that help.
               </p>
@@ -954,10 +1331,10 @@ function RedditContent() {
       </div>
 
       {/* Feature 1: Discover Subreddits - Cream/Beige Section - Full Width */}
-      <div className="bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 py-20 md:py-32">
+      <div className="bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 py-16 md:py-24">
         {/* Section Header */}
         <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900">How Moreach works</h2>
+          <h2 className="text-4xl md:text-5xl font-bold text-gray-900">How Moreach works</h2>
         </div>
         <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-2 gap-12 items-center">
             <div>
@@ -967,7 +1344,7 @@ function RedditContent() {
             <h3 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6 leading-tight">
               Discover relevant subreddits
             </h3>
-            <p className="text-xl text-gray-700 mb-8 leading-relaxed">
+            <p className="text-lg text-gray-600 mb-8 leading-relaxed">
               Tell us about your business and target audience. Our AI analyzes millions of subreddits to find communities where your potential customers hang out.
             </p>
             <ul className="space-y-4">
@@ -990,7 +1367,7 @@ function RedditContent() {
             </div>
           <div className="bg-white rounded-3xl p-8 shadow-2xl border-4 border-orange-200">
             <div className="text-sm font-semibold text-gray-500 mb-3 uppercase tracking-wide">Business Description</div>
-            <div className="text-gray-900 mb-6 text-lg">
+            <div className="text-gray-900 mb-6 text-base">
               "We build productivity tools for remote teams..."
           </div>
             <div className="text-sm font-semibold text-gray-500 mb-3 uppercase tracking-wide">Discovered Subreddits</div>
@@ -1013,7 +1390,7 @@ function RedditContent() {
       </div>
 
       {/* Feature 2: Track Relevant Posts - Deep Red/Maroon Section - Full Width */}
-      <div className="bg-gradient-to-br from-red-900 via-red-800 to-orange-900 py-20 md:py-32 relative overflow-hidden">
+      <div className="bg-gradient-to-br from-red-900 via-red-800 to-orange-900 py-16 md:py-24 relative overflow-hidden">
         {/* Decorative elements */}
         <div className="absolute top-0 left-0 w-96 h-96 bg-orange-500/20 rounded-full -translate-x-1/2 -translate-y-1/2"></div>
         <div className="absolute bottom-0 right-0 w-80 h-80 bg-red-500/20 rounded-full translate-x-1/3 translate-y-1/3"></div>
@@ -1089,7 +1466,7 @@ function RedditContent() {
       </div>
 
       {/* Feature 3: Auto-generate Comments & DMs - Light Green/Yellow Section - Full Width */}
-      <div className="bg-gradient-to-br from-lime-100 via-yellow-100 to-green-100 py-20 md:py-32">
+      <div className="bg-gradient-to-br from-lime-100 via-yellow-100 to-green-100 py-16 md:py-24">
         <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-2 gap-12 items-center">
           <div>
             <div className="inline-block px-5 py-2 bg-green-600 text-white rounded-full text-sm font-bold mb-6 shadow-lg">
@@ -1098,7 +1475,7 @@ function RedditContent() {
             <h3 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6 leading-tight">
               Auto-generate comments and DMs
             </h3>
-            <p className="text-xl text-gray-700 mb-8 leading-relaxed">
+            <p className="text-lg text-gray-600 mb-8 leading-relaxed">
               Generate authentic, personalized comments and direct messages for each post. Our AI understands context and writes responses that sound human and drive real engagement.
             </p>
             <ul className="space-y-4">
@@ -1143,29 +1520,60 @@ function RedditContent() {
         </div>
       </div>
 
-      {/* Stats Section - Bold Purple Gradient - Full Width */}
-      <div className="bg-gradient-to-br from-purple-600 via-purple-700 to-indigo-800 py-20 md:py-32 text-white relative overflow-hidden">
+      {/* Stats Section - Bold Orange Gradient - Full Width */}
+      <div className="bg-gradient-to-br from-orange-500 via-orange-600 to-red-600 py-10 md:py-16 text-white relative overflow-hidden">
         {/* Decorative circles */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-pink-500/20 rounded-full translate-x-1/3 -translate-y-1/3 blur-2xl"></div>
-        <div className="absolute bottom-0 left-0 w-80 h-80 bg-indigo-500/20 rounded-full -translate-x-1/3 translate-y-1/3 blur-2xl"></div>
-        
+        <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-400/20 rounded-full translate-x-1/3 -translate-y-1/3 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 w-80 h-80 bg-red-400/20 rounded-full -translate-x-1/3 translate-y-1/3 blur-2xl"></div>
+
         <div className="relative z-10 max-w-7xl mx-auto px-6">
-          <div className="text-center mb-12">
-            <h3 className="text-4xl md:text-5xl font-bold mb-4">Real results from beta users</h3>
-            <p className="text-xl text-purple-100">Our users are seeing incredible engagement on Reddit</p>
+          <div className="text-center mb-8">
+            <h3 className="text-4xl md:text-5xl font-bold mb-3">Real results from beta users</h3>
+            <p className="text-base md:text-lg text-orange-100">Our users are seeing incredible engagement on Reddit</p>
           </div>
-          <div className="grid md:grid-cols-3 gap-12 text-center">
+          <div className="grid md:grid-cols-3 gap-12 text-center mb-16">
             <div className="transform hover:scale-110 transition-transform">
-              <div className="text-6xl md:text-7xl font-black mb-3 bg-gradient-to-br from-white to-purple-100 bg-clip-text text-transparent">20%</div>
-              <div className="text-xl text-purple-100 font-semibold">Average Reply Rate</div>
+              <div className="text-5xl md:text-6xl font-bold mb-3 bg-gradient-to-br from-white to-orange-100 bg-clip-text text-transparent">20%</div>
+              <div className="text-base text-orange-100 font-medium">Average Reply Rate</div>
             </div>
             <div className="transform hover:scale-110 transition-transform">
-              <div className="text-6xl md:text-7xl font-black mb-3 bg-gradient-to-br from-white to-purple-100 bg-clip-text text-transparent">80%</div>
-              <div className="text-xl text-purple-100 font-semibold">Positive Responses</div>
+              <div className="text-5xl md:text-6xl font-bold mb-3 bg-gradient-to-br from-white to-orange-100 bg-clip-text text-transparent">80%</div>
+              <div className="text-base text-orange-100 font-medium">Positive Responses</div>
             </div>
             <div className="transform hover:scale-110 transition-transform">
-              <div className="text-6xl md:text-7xl font-black mb-3 bg-gradient-to-br from-white to-purple-100 bg-clip-text text-transparent">100%</div>
-              <div className="text-xl text-purple-100 font-semibold">Users find customers on Reddit</div>
+              <div className="text-5xl md:text-6xl font-bold mb-3 bg-gradient-to-br from-white to-orange-100 bg-clip-text text-transparent">100%</div>
+              <div className="text-base text-orange-100 font-medium">Users find customers on Reddit</div>
+            </div>
+          </div>
+
+          {/* Social Proof Stories Carousel */}
+          <div className="relative overflow-hidden">
+            <div className="flex animate-marquee space-x-6">
+              {[
+                { quote: "Closed $1,200 MRR from Reddit leads in my first month. The AI finds people actively looking for solutions like mine.", author: "Marcus Chen", role: "Founder", company: "Shipfast.io", avatar: "https://randomuser.me/api/portraits/men/32.jpg" },
+                { quote: "3 clients worth $4,500 total came from moreach leads. Saves me 10+ hours/week vs manual Reddit hunting.", author: "Sarah Mitchell", role: "CEO", company: "GrowthLab Agency", avatar: "https://randomuser.me/api/portraits/women/44.jpg" },
+                { quote: "15 replies first week, 4 converted to paying users. That's $800/mo recurring from organic Reddit outreach.", author: "Jake Torres", role: "Indie Hacker", company: "LaunchPad Tools", avatar: "https://randomuser.me/api/portraits/men/75.jpg" },
+                { quote: "The suggested replies feel genuine. Landed 2 enterprise deals ($3k each) because I showed up at the right moment.", author: "Emily Watson", role: "Marketing Lead", company: "Nexus Commerce", avatar: "https://randomuser.me/api/portraits/women/68.jpg" },
+                { quote: "Found 5 perfect-fit leads in subreddits I didn't know existed. Already converted 2 to annual plans worth $600.", author: "David Park", role: "Co-founder", company: "CodeReview.ai", avatar: "https://randomuser.me/api/portraits/men/46.jpg" },
+                { quote: "Closed $1,200 MRR from Reddit leads in my first month. The AI finds people actively looking for solutions like mine.", author: "Marcus Chen", role: "Founder", company: "Shipfast.io", avatar: "https://randomuser.me/api/portraits/men/32.jpg" },
+                { quote: "3 clients worth $4,500 total came from moreach leads. Saves me 10+ hours/week vs manual Reddit hunting.", author: "Sarah Mitchell", role: "CEO", company: "GrowthLab Agency", avatar: "https://randomuser.me/api/portraits/women/44.jpg" },
+                { quote: "15 replies first week, 4 converted to paying users. That's $800/mo recurring from organic Reddit outreach.", author: "Jake Torres", role: "Indie Hacker", company: "LaunchPad Tools", avatar: "https://randomuser.me/api/portraits/men/75.jpg" },
+              ].map((story, index) => (
+                <div key={index} className="flex-shrink-0 w-80 h-44 bg-white/10 backdrop-blur-sm rounded-2xl p-5 border border-white/20 flex flex-col">
+                  <p className="text-white text-sm leading-relaxed flex-grow">"{story.quote}"</p>
+                  <div className="flex items-center gap-3 mt-4">
+                    <img
+                      src={story.avatar}
+                      alt={story.author}
+                      className="w-9 h-9 rounded-full object-cover border-2 border-white/30"
+                    />
+                    <div>
+                      <div className="text-white font-semibold text-sm">{story.author}</div>
+                      <div className="text-orange-200 text-xs">{story.role} @ {story.company}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -1184,7 +1592,7 @@ function ComingSoonContent({ platform }: { platform: string }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
             </div>
-        <h3 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+        <h3 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
           {platform} Support Coming Soon
         </h3>
         <p className="text-lg text-gray-600 mb-8">

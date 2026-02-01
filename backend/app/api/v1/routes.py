@@ -1,8 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timedelta
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, Header, BackgroundTasks
+from fastapi.responses import JSONResponse
+from starlette.requests import Request as StarletteRequest
 from sqlalchemy import select, or_, and_
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 import json
 import logging
+import stripe
 
 from app.core.db import get_db
 from app.core.auth import (
@@ -13,7 +19,7 @@ from app.core.email import send_verification_email, send_welcome_email
 from app.models.schemas import (
     RequestCreate, RequestResponse, ResultsResponse, InfluencerResponse,
     # User schemas
-    UserRegister, UserLogin, UserResponse, TokenResponse,
+    UserRegister, UserLogin, UserResponse, TokenResponse, GoogleAuthRequest, ProfileUpdate,
     # Reddit schemas
     RedditCampaignCreate, RedditCampaignResponse, SubredditInfo,
     RedditSubredditSelect, RedditLeadResponse, RedditLeadUpdateStatus,
@@ -30,9 +36,39 @@ from app.models.tables import (
 from app.services.discovery.manager import DiscoveryManager
 from app.services.reddit.discovery import RedditDiscoveryService
 from app.services.reddit.cache import SubredditCacheService
+from app.services.stripe_billing import (
+    create_checkout_session,
+    create_customer_portal_session,
+    handle_checkout_completed,
+    handle_subscription_updated,
+    handle_subscription_deleted,
+    handle_invoice_payment_failed,
+)
+from app.core.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def user_to_response(user: User) -> UserResponse:
+    """Convert a User model to UserResponse schema"""
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        company=user.company,
+        job_title=user.job_title,
+        industry=user.industry.value,
+        usage_type=user.usage_type.value,
+        role=user.role.value,
+        is_active=user.is_active,
+        email_verified=user.email_verified,
+        profile_completed=user.profile_completed,
+        subscription_tier=user.subscription_tier.value,
+        trial_ends_at=user.trial_ends_at,
+        subscription_ends_at=user.subscription_ends_at,
+        created_at=user.created_at,
+    )
 
 
 # ======= Authentication Endpoints =======
@@ -52,6 +88,9 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
         )
 
     # Create new user (email_verified defaults to False)
+    # Set trial to end 7 days from now
+    trial_end = datetime.utcnow() + timedelta(days=7)
+
     user = User(
         email=payload.email,
         hashed_password=get_password_hash(payload.password),
@@ -60,6 +99,8 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
         job_title=payload.job_title,
         industry=payload.industry,
         usage_type=payload.usage_type,
+        profile_completed=True,  # Profile is complete since they filled out the form
+        trial_ends_at=trial_end,
     )
 
     db.add(user)
@@ -113,19 +154,7 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
     # Return token and user info
     return TokenResponse(
         access_token=access_token,
-        user=UserResponse(
-            id=user.id,
-            email=user.email,
-            full_name=user.full_name,
-            company=user.company,
-            job_title=user.job_title,
-            industry=user.industry.value,
-            usage_type=user.usage_type.value,
-            role=user.role.value,
-            is_active=user.is_active,
-            email_verified=user.email_verified,
-            created_at=user.created_at,
-        )
+        user=user_to_response(user)
     )
 
 
@@ -134,19 +163,25 @@ def get_me(current_user: User = Depends(get_current_user)):
     """
     Get current user information
     """
-    return UserResponse(
-        id=current_user.id,
-        email=current_user.email,
-        full_name=current_user.full_name,
-        company=current_user.company,
-        job_title=current_user.job_title,
-        industry=current_user.industry.value,
-        usage_type=current_user.usage_type.value,
-        role=current_user.role.value,
-        is_active=current_user.is_active,
-        email_verified=current_user.email_verified,
-        created_at=current_user.created_at,
-    )
+    return user_to_response(current_user)
+
+
+@router.get("/auth/polling-schedule")
+def get_polling_schedule(current_user: User = Depends(get_current_user)):
+    """
+    Get the user's scheduled polling configuration based on their subscription tier.
+
+    Returns polling frequency and times:
+    - Starter plans: 2x/day (UTC 07:00, 16:00)
+    - Growth/Pro plans: 4x/day (UTC 07:00, 11:00, 16:00, 22:00)
+    """
+    from app.services.reddit.scheduler import get_polling_schedule_info
+
+    schedule = get_polling_schedule_info(current_user.subscription_tier)
+    return {
+        "tier": current_user.subscription_tier.value,
+        "schedule": schedule
+    }
 
 
 @router.post("/auth/verify-email")
@@ -206,6 +241,266 @@ def resend_verification(email: str, db: Session = Depends(get_db)):
         "message": "If an account exists with this email, a verification email has been sent.",
         "email_sent": email_sent
     }
+
+
+@router.post("/auth/google", response_model=TokenResponse)
+def google_auth(payload: GoogleAuthRequest, db: Session = Depends(get_db)):
+    """
+    Authenticate with Google ID Token (Sign In With Google popup)
+    - Verifies the ID token with Google
+    - Creates a new user or logs in existing user
+    - Returns JWT access token
+    """
+    import httpx
+    from app.core.config import settings
+
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=500,
+            detail="Google OAuth is not configured"
+        )
+
+    # Verify ID token with Google
+    try:
+        response = httpx.get(
+            f"https://oauth2.googleapis.com/tokeninfo?id_token={payload.id_token}"
+        )
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid Google ID token"
+            )
+
+        token_info = response.json()
+
+        # Verify the token was issued for our app
+        if token_info.get("aud") != settings.GOOGLE_CLIENT_ID:
+            raise HTTPException(
+                status_code=401,
+                detail="Token was not issued for this application"
+            )
+
+        google_id = token_info.get("sub")
+        email = token_info.get("email")
+        name = token_info.get("name", "")
+
+        if not email:
+            raise HTTPException(
+                status_code=400,
+                detail="Email not provided by Google"
+            )
+
+    except httpx.RequestError as e:
+        logger.error(f"Error verifying Google token: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to verify Google token"
+        )
+
+    # Find existing user by google_id or email
+    user = db.query(User).filter(
+        or_(User.google_id == google_id, User.email == email)
+    ).first()
+
+    if user:
+        # Link Google account if not already linked
+        if not user.google_id:
+            user.google_id = google_id
+            db.commit()
+    else:
+        # Create new user with 7-day trial
+        trial_end = datetime.utcnow() + timedelta(days=7)
+        user = User(
+            email=email,
+            google_id=google_id,
+            full_name=name,
+            hashed_password=None,  # No password for OAuth users
+            email_verified=True,  # Google has already verified the email
+            trial_ends_at=trial_end,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        # Send welcome email for new users
+        send_welcome_email(user.email, user.full_name)
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="Account is inactive"
+        )
+
+    # Create access token
+    access_token = create_access_token(data={"sub": str(user.id)})
+
+    return TokenResponse(
+        access_token=access_token,
+        user=user_to_response(user)
+    )
+
+
+@router.get("/auth/google")
+def google_auth_redirect():
+    """
+    Redirect to Google OAuth authorization page (OAuth 2.0 flow)
+    """
+    from urllib.parse import urlencode
+    from fastapi.responses import RedirectResponse
+
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=500,
+            detail="Google OAuth is not configured"
+        )
+
+    # Build Google OAuth URL
+    params = {
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "redirect_uri": f"{settings.FRONTEND_URL}/auth/google/callback",
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+
+    google_auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+    return RedirectResponse(url=google_auth_url)
+
+
+@router.get("/auth/google/callback")
+def google_auth_callback(code: str, db: Session = Depends(get_db)):
+    """
+    Handle Google OAuth callback - exchange code for tokens and create/login user
+    """
+    import httpx
+    from fastapi.responses import RedirectResponse
+
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=500,
+            detail="Google OAuth is not configured"
+        )
+
+    # Exchange authorization code for tokens
+    try:
+        token_response = httpx.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": settings.GOOGLE_CLIENT_ID,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "redirect_uri": f"{settings.FRONTEND_URL}/auth/google/callback",
+                "grant_type": "authorization_code",
+            },
+        )
+
+        if token_response.status_code != 200:
+            logger.error(f"Failed to exchange code for token: {token_response.text}")
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}/login?error=google_auth_failed"
+            )
+
+        tokens = token_response.json()
+        id_token = tokens.get("id_token")
+
+        # Verify ID token to get user info
+        userinfo_response = httpx.get(
+            f"https://oauth2.googleapis.com/tokeninfo?id_token={id_token}"
+        )
+
+        if userinfo_response.status_code != 200:
+            logger.error(f"Failed to verify ID token: {userinfo_response.text}")
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}/login?error=google_auth_failed"
+            )
+
+        token_info = userinfo_response.json()
+
+        # Verify the token was issued for our app
+        if token_info.get("aud") != settings.GOOGLE_CLIENT_ID:
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}/login?error=invalid_token"
+            )
+
+        google_id = token_info.get("sub")
+        email = token_info.get("email")
+        name = token_info.get("name", "")
+
+        if not email:
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}/login?error=no_email"
+            )
+
+    except httpx.RequestError as e:
+        logger.error(f"Error during Google OAuth: {e}")
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}/login?error=google_auth_failed"
+        )
+
+    # Find existing user by google_id or email
+    user = db.query(User).filter(
+        or_(User.google_id == google_id, User.email == email)
+    ).first()
+
+    if user:
+        # Link Google account if not already linked
+        if not user.google_id:
+            user.google_id = google_id
+            db.commit()
+    else:
+        # Create new user with 7-day trial
+        trial_end = datetime.utcnow() + timedelta(days=7)
+        user = User(
+            email=email,
+            google_id=google_id,
+            full_name=name,
+            hashed_password=None,  # No password for OAuth users
+            email_verified=True,  # Google has already verified the email
+            trial_ends_at=trial_end,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        # Send welcome email for new users
+        send_welcome_email(user.email, user.full_name)
+
+    if not user.is_active:
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}/login?error=account_inactive"
+        )
+
+    # Create access token
+    access_token = create_access_token(data={"sub": str(user.id)})
+
+    # Redirect to frontend with token
+    # The frontend will store the token and redirect to dashboard
+    return RedirectResponse(
+        url=f"{settings.FRONTEND_URL}/auth/google/callback?token={access_token}&user={user.id}"
+    )
+
+
+@router.post("/auth/complete-profile", response_model=UserResponse)
+def complete_profile(
+    payload: ProfileUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Complete user profile after OAuth login
+    """
+    current_user.full_name = payload.full_name
+    current_user.company = payload.company
+    current_user.job_title = payload.job_title
+    current_user.industry = payload.industry
+    current_user.usage_type = payload.usage_type
+    current_user.profile_completed = True
+
+    db.commit()
+    db.refresh(current_user)
+
+    return user_to_response(current_user)
 
 
 # ======= Influencer Discovery Endpoints =======
@@ -384,8 +679,9 @@ def discover_subreddits(
 
 @router.post("/reddit/campaigns/{campaign_id}/select-subreddits")
 def select_subreddits(
-    campaign_id: int, 
-    payload: RedditSubredditSelect, 
+    campaign_id: int,
+    payload: RedditSubredditSelect,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -393,6 +689,7 @@ def select_subreddits(
     Step 3: User selects which subreddits to monitor
     - Saves selected subreddits to campaign
     - Activates campaign for polling
+    - Auto-triggers first poll in background
     """
     campaign = db.get(RedditCampaign, campaign_id)
     if not campaign:
@@ -453,8 +750,29 @@ def select_subreddits(
         RedditCampaignSubreddit.campaign_id == campaign_id
     ).count()
     logger.info(f"Campaign {campaign_id} activated with {saved_count} subreddits (added: {subreddits_added})")
-    
-    return {"message": f"Campaign activated with {saved_count} subreddits"}
+
+    # Auto-trigger first poll in background
+    def run_first_poll():
+        """Background task to run the first poll after campaign creation"""
+        from app.core.db import SessionLocal
+        from app.services.reddit.polling import RedditPollingService
+
+        logger.info(f"Starting auto-first-poll for campaign {campaign_id}")
+        try:
+            bg_db = SessionLocal()
+            try:
+                polling_service = RedditPollingService()
+                summary = polling_service.poll_campaign_immediately(bg_db, campaign_id)
+                logger.info(f"Auto-first-poll completed for campaign {campaign_id}: {summary}")
+            finally:
+                bg_db.close()
+        except Exception as e:
+            logger.error(f"Error in auto-first-poll for campaign {campaign_id}: {e}", exc_info=True)
+
+    background_tasks.add_task(run_first_poll)
+    logger.info(f"Scheduled auto-first-poll for campaign {campaign_id}")
+
+    return {"message": f"Campaign activated with {saved_count} subreddits", "first_poll_scheduled": True}
 
 
 @router.get("/reddit/campaigns/{campaign_id}/subreddits", response_model=list[SubredditInfo])
@@ -531,8 +849,8 @@ def get_reddit_campaign(
 
 @router.get("/reddit/campaigns/{campaign_id}/leads", response_model=RedditCampaignLeadsResponse)
 def get_campaign_leads(
-    campaign_id: int, 
-    status: str | None = None,
+    campaign_id: int,
+    status: Optional[str] = None,
     limit: int = 200,  # Increased default limit
     offset: int = 0,   # Add pagination support
     db: Session = Depends(get_db),
@@ -541,7 +859,7 @@ def get_campaign_leads(
     """
     Step 4: Get leads for a campaign
     - Returns all discovered leads with relevancy scores and suggested responses
-    - Can filter by status (NEW, REVIEWED, CONTACTED, DISMISSED)
+    - Can filter by status (NEW, CONTACTED, DISMISSED)
     - Supports pagination via limit and offset parameters
     """
     campaign = db.get(RedditCampaign, campaign_id)
@@ -590,12 +908,7 @@ def get_campaign_leads(
         RedditLead.campaign_id == campaign_id,
         RedditLead.status == RedditLeadStatus.NEW
     ).count()
-    
-    reviewed_leads = db.query(RedditLead).filter(
-        RedditLead.campaign_id == campaign_id,
-        RedditLead.status == RedditLeadStatus.REVIEWED
-    ).count()
-    
+
     contacted_leads = db.query(RedditLead).filter(
         RedditLead.campaign_id == campaign_id,
         RedditLead.status == RedditLeadStatus.CONTACTED
@@ -631,7 +944,6 @@ def get_campaign_leads(
         campaign_id=campaign_id,
         total_leads=total_leads,
         new_leads=new_leads,
-        reviewed_leads=reviewed_leads,
         contacted_leads=contacted_leads,
         leads=lead_responses
     )
@@ -836,6 +1148,131 @@ def run_campaign_now(
         raise HTTPException(status_code=500, detail=f"Failed to run campaign: {str(e)}")
 
 
+@router.get("/reddit/campaigns/{campaign_id}/run-now/stream")
+async def run_campaign_stream(
+    campaign_id: int,
+    request: StarletteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    SSE streaming endpoint for real-time polling progress
+
+    Event types:
+    - progress: {"phase": "fetching"|"scoring"|"suggestions", "current": N, "total": M}
+    - lead: {"id": N, "title": "...", "relevancy_score": 90, ...}
+    - complete: {"total_leads": N, "total_posts_fetched": M, "summary": {...}}
+    - error: {"message": "..."}
+    """
+    from fastapi.responses import StreamingResponse
+    from app.services.reddit.streaming_poll import StreamingPollService
+    import json
+
+    campaign = db.get(RedditCampaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    if campaign.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this campaign")
+
+    if campaign.status != RedditCampaignStatus.ACTIVE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Campaign must be ACTIVE to run. Current status: {campaign.status}"
+        )
+
+    async def event_generator():
+        try:
+            service = StreamingPollService()
+
+            async for event in service.poll_campaign_streaming(db, campaign_id):
+                # Check if client disconnected
+                if await request.is_disconnected():
+                    logger.info(f"Client disconnected from SSE stream for campaign {campaign_id}")
+                    break
+
+                yield f"event: {event['type']}\n"
+                yield f"data: {json.dumps(event['data'])}\n\n"
+
+        except Exception as e:
+            logger.error(f"Error in SSE stream for campaign {campaign_id}: {e}", exc_info=True)
+            yield f"event: error\n"
+            yield f"data: {json.dumps({'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
+
+
+@router.post("/reddit/leads/{lead_id}/generate-suggestions")
+async def generate_lead_suggestions(
+    lead_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    On-demand generation of suggested_comment and suggested_dm
+    Called when user clicks into a lead that doesn't have suggestions yet
+    """
+    from datetime import datetime
+    from app.services.reddit.batch_scoring import BatchScoringService
+
+    lead = db.get(RedditLead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    # Verify ownership via campaign
+    campaign = db.get(RedditCampaign, lead.campaign_id)
+    if not campaign or campaign.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this lead")
+
+    # Check if suggestions already exist
+    if lead.has_suggestions and lead.suggested_comment and lead.suggested_dm:
+        return {
+            "suggested_comment": lead.suggested_comment,
+            "suggested_dm": lead.suggested_dm,
+            "cached": True
+        }
+
+    # Generate suggestions
+    scoring_service = BatchScoringService()
+    post_dict = {
+        "title": lead.title,
+        "content": lead.content,
+        "subreddit_name": lead.subreddit_name,
+        "relevancy_reason": lead.relevancy_reason or "Relevant post"
+    }
+
+    try:
+        suggestions = await scoring_service.generate_suggestion_on_demand(
+            post_dict,
+            campaign.business_description
+        )
+
+        # Update lead
+        lead.suggested_comment = suggestions.get("suggested_comment", "")
+        lead.suggested_dm = suggestions.get("suggested_dm", "")
+        lead.has_suggestions = True
+        lead.suggestions_generated_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "suggested_comment": lead.suggested_comment,
+            "suggested_dm": lead.suggested_dm,
+            "cached": False
+        }
+
+    except Exception as e:
+        logger.error(f"Error generating suggestions for lead {lead_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to generate suggestions: {str(e)}")
+
+
 @router.delete("/reddit/campaigns/{campaign_id}")
 def delete_campaign(
     campaign_id: int, 
@@ -893,5 +1330,140 @@ def list_campaigns(
             subreddits_count=subreddits_count,
             leads_count=leads_count
         ))
-    
+
     return responses
+
+
+# ============================================================================
+# Stripe Billing Endpoints
+# ============================================================================
+
+class CheckoutRequest(BaseModel):
+    tier_code: str  # e.g., "STARTER_MONTHLY", "GROWTH_ANNUALLY"
+    success_url: Optional[str] = None
+    cancel_url: Optional[str] = None
+
+
+@router.post("/billing/create-checkout-session")
+def create_stripe_checkout(
+    request: CheckoutRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Create a Stripe Checkout session for subscription.
+
+    Returns a URL to redirect the user to Stripe's checkout page.
+    """
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Stripe is not configured")
+
+    # Default URLs
+    frontend_url = settings.FRONTEND_URL
+    success_url = request.success_url or f"{frontend_url}/reddit?checkout=success"
+    cancel_url = request.cancel_url or f"{frontend_url}/reddit?checkout=cancelled"
+
+    try:
+        result = create_checkout_session(
+            user=current_user,
+            tier_code=request.tier_code,
+            db=db,
+            success_url=success_url,
+            cancel_url=cancel_url,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating checkout session: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create checkout session")
+
+
+@router.post("/billing/create-portal-session")
+def create_stripe_portal(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Create a Stripe Customer Portal session for managing subscriptions.
+
+    Returns a URL to redirect the user to Stripe's customer portal.
+    """
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Stripe is not configured")
+
+    if not current_user.stripe_customer_id:
+        raise HTTPException(status_code=400, detail="No active subscription found")
+
+    frontend_url = settings.FRONTEND_URL
+    return_url = f"{frontend_url}/reddit"
+
+    try:
+        result = create_customer_portal_session(
+            user=current_user,
+            db=db,
+            return_url=return_url,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating portal session: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create portal session")
+
+
+@router.post("/billing/webhook")
+async def stripe_webhook(
+    request: StarletteRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Handle Stripe webhook events.
+
+    This endpoint receives events from Stripe when subscription status changes.
+    """
+    if not settings.STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=500, detail="Webhook not configured")
+
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError:
+        logger.error("Invalid webhook payload")
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.error.SignatureVerificationError:
+        logger.error("Invalid webhook signature")
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    # Handle the event
+    event_type = event["type"]
+    event_object = event["data"]["object"]
+
+    logger.info(f"Received Stripe webhook: {event_type}")
+
+    try:
+        if event_type == "checkout.session.completed":
+            handle_checkout_completed(event_object, db)
+
+        elif event_type == "customer.subscription.updated":
+            handle_subscription_updated(event_object, db)
+
+        elif event_type == "customer.subscription.deleted":
+            handle_subscription_deleted(event_object, db)
+
+        elif event_type == "invoice.payment_failed":
+            handle_invoice_payment_failed(event_object, db)
+
+        else:
+            logger.info(f"Unhandled event type: {event_type}")
+
+    except Exception as e:
+        logger.error(f"Error handling webhook {event_type}: {e}")
+        # Don't raise - return 200 so Stripe doesn't retry
+        return {"status": "error", "message": str(e)}
+
+    return {"status": "success"}

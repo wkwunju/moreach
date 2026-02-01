@@ -7,7 +7,7 @@ import logging
 import json
 from typing import List, Dict, Any
 
-from app.providers.reddit.apify import ApifyRedditProvider
+from app.providers.reddit.factory import get_reddit_provider
 from app.services.llm.client import get_llm_client
 
 
@@ -20,7 +20,7 @@ class RedditDiscoveryService:
     """
     
     def __init__(self):
-        self.reddit_provider = ApifyRedditProvider()
+        self.reddit_provider = get_reddit_provider()
         self.llm_client = get_llm_client()
     
     def generate_search_queries(self, business_description: str) -> List[str]:
@@ -38,9 +38,10 @@ class RedditDiscoveryService:
 Business Description:
 {business_description}
 
-Generate 5-8 search queries that would help find relevant subreddits where this business's target customers hang out.
+Generate 4-6 search queries that would help find relevant subreddits where this business's target customers hang out.
 
 Requirements:
+- Generate at least 4 but no more than 6 queries
 - Focus on the industry, problems the business solves, and target audience
 - Keep queries broad enough to find active communities
 - Include both industry-specific and general terms

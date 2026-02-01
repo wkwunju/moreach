@@ -38,3 +38,7 @@ build/
 
 # npm cache
 .npm-cache/
+
+# Markdown docs (keep README.md only)
+*.md
+!README.md

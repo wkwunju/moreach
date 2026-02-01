@@ -1,11 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Script from "next/script";
 import Dropdown from "@/components/Dropdown";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: any) => void;
+          renderButton: (element: HTMLElement, config: any) => void;
+          prompt: () => void;
+        };
+      };
+    };
+  }
+}
 
 // Industry options relevant to moreach
 const INDUSTRIES = [
@@ -40,10 +56,75 @@ export default function RegisterPage() {
     industry: "E-commerce",
     usage_type: "Personal Use",
   });
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState("");
+
+  const handleGoogleCredentialResponse = async (response: any) => {
+    setGoogleLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/google`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id_token: response.credential }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || "Google sign up failed");
+      }
+
+      // Store token and user info
+      localStorage.setItem("token", data.access_token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+
+      // Dispatch auth change event
+      window.dispatchEvent(new Event("authChange"));
+
+      // Redirect based on profile completion status
+      if (data.user.profile_completed) {
+        router.push("/reddit");
+      } else {
+        router.push("/complete-profile");
+      }
+    } catch (err: any) {
+      setError(err.message || "An error occurred during Google sign up");
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const initializeGoogleSignIn = () => {
+    if (window.google && GOOGLE_CLIENT_ID) {
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredentialResponse,
+      });
+
+      const googleButtonDiv = document.getElementById("google-signup-button");
+      if (googleButtonDiv) {
+        window.google.accounts.id.renderButton(googleButtonDiv, {
+          theme: "outline",
+          size: "large",
+          width: "100%",
+          text: "signup_with",
+        });
+      }
+    }
+  };
+
+  useEffect(() => {
+    // Initialize if script already loaded
+    if (window.google) {
+      initializeGoogleSignIn();
+    }
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({
@@ -70,6 +151,11 @@ export default function RegisterPage() {
 
     if (!formData.full_name.trim()) {
       setError("Full name is required");
+      return;
+    }
+
+    if (!agreedToTerms) {
+      setError("You must agree to the Terms of Service and Privacy Policy");
       return;
     }
 
@@ -195,6 +281,34 @@ export default function RegisterPage() {
 
         {/* Registration Form */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+          {/* Google Sign Up */}
+          {GOOGLE_CLIENT_ID && (
+            <>
+              <Script
+                src="https://accounts.google.com/gsi/client"
+                strategy="afterInteractive"
+                onLoad={initializeGoogleSignIn}
+              />
+              <div
+                id="google-signup-button"
+                className="flex justify-center [&>div]:w-full"
+              ></div>
+              {googleLoading && (
+                <p className="text-center text-sm text-gray-500 mt-2">Signing up with Google...</p>
+              )}
+
+              {/* Divider */}
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="bg-white px-4 text-gray-500">or continue with email</span>
+                </div>
+              </div>
+            </>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Error Message */}
             {error && (
@@ -333,6 +447,28 @@ export default function RegisterPage() {
               />
             </div>
 
+            {/* Terms and Conditions Checkbox */}
+            <div className="flex items-start">
+              <input
+                type="checkbox"
+                id="terms"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              />
+              <label htmlFor="terms" className="ml-3 text-sm text-gray-600 cursor-pointer">
+                I agree to the{" "}
+                <Link href="/terms" className="text-blue-600 hover:text-blue-800 font-semibold">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="/privacy" className="text-blue-600 hover:text-blue-800 font-semibold">
+                  Privacy Policy
+                </Link>
+                <span className="text-red-500"> *</span>
+              </label>
+            </div>
+
             {/* Submit Button */}
             <button
               type="submit"
@@ -354,17 +490,6 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        {/* Terms */}
-        <p className="text-center text-xs text-gray-500 mt-6">
-          By creating an account, you agree to our{" "}
-          <Link href="/terms" className="text-blue-600 hover:text-blue-800">
-            Terms of Service
-          </Link>{" "}
-          and{" "}
-          <Link href="/privacy" className="text-blue-600 hover:text-blue-800">
-            Privacy Policy
-          </Link>
-        </p>
       </div>
     </div>
   );

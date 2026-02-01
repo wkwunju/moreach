@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback, Suspense, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   createRedditCampaign,
   discoverSubreddits,
@@ -10,14 +11,21 @@ import {
   updateLeadStatus,
   pauseCampaign,
   resumeCampaign,
-  runCampaignNow,
+  runCampaignNowStream,
+  generateLeadSuggestions,
   fetchCampaignSubreddits,
   deleteCampaign,
+  type SSEEvent,
+  type SSEProgressEvent,
+  type SSELeadEvent,
+  type SSECompleteEvent,
 } from "@/lib/api";
 import type { RedditCampaign, SubredditInfo, RedditLead } from "@/lib/types";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import Dropdown from "@/components/Dropdown";
 import DashboardLayout from "@/components/DashboardLayout";
+import UserMenu from "@/components/UserMenu";
+import { getUser, logout, getTrialDaysRemaining, isTrialActive, type User } from "@/lib/auth";
+import BillingDialog from "@/components/BillingDialog";
 
 type Step = "campaigns" | "create" | "discover" | "leads";
 
@@ -35,12 +43,19 @@ const DISCOVERY_MESSAGES = [
 function DiscoveryLoadingState() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   useEffect(() => {
-    // Cycle through messages every 2.5 seconds
+    // Cycle through messages every 3 seconds with smooth transition
     const messageInterval = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % DISCOVERY_MESSAGES.length);
-    }, 2500);
+      // Start fade out
+      setIsTransitioning(true);
+      // After fade out completes, change message and fade in
+      setTimeout(() => {
+        setCurrentIndex((prev) => (prev + 1) % DISCOVERY_MESSAGES.length);
+        setIsTransitioning(false);
+      }, 400); // Match the fade-out duration
+    }, 3000);
 
     // Animate progress bar
     const progressInterval = setInterval(() => {
@@ -108,9 +123,9 @@ function DiscoveryLoadingState() {
         <div className="flex justify-center mb-8">
           <div className="relative">
             {/* Pulsing background */}
-            <div className="absolute inset-0 bg-blue-100 rounded-full animate-ping opacity-25" />
+            <div className="absolute inset-0 bg-orange-100 rounded-full animate-ping opacity-25" />
             {/* Icon container */}
-            <div className="relative w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white shadow-lg">
+            <div className="relative w-16 h-16 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center text-white shadow-lg">
               <div className="animate-pulse">
                 {getIcon(currentMessage.icon)}
               </div>
@@ -118,11 +133,13 @@ function DiscoveryLoadingState() {
           </div>
         </div>
 
-        {/* Message with fade transition */}
-        <div className="text-center mb-8">
+        {/* Message with smooth fade transition */}
+        <div className="text-center mb-8 h-16">
           <p
             key={currentIndex}
-            className="text-lg font-medium text-gray-900 animate-fade-in"
+            className={`text-lg font-medium text-gray-900 transition-all duration-400 ease-in-out ${
+              isTransitioning ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
+            }`}
           >
             {currentMessage.text}
           </p>
@@ -135,7 +152,7 @@ function DiscoveryLoadingState() {
         <div className="mb-6">
           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-blue-500 to-purple-600 rounded-full transition-all duration-300 ease-out"
+              className="h-full bg-gradient-to-r from-orange-400 to-orange-500 rounded-full transition-all duration-300 ease-out"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -148,9 +165,9 @@ function DiscoveryLoadingState() {
               key={idx}
               className={`w-2 h-2 rounded-full transition-all duration-300 ${
                 idx === currentIndex
-                  ? "bg-blue-600 scale-125"
+                  ? "bg-orange-500 scale-125"
                   : idx < currentIndex
-                  ? "bg-blue-400"
+                  ? "bg-orange-400"
                   : "bg-gray-300"
               }`}
             />
@@ -158,20 +175,10 @@ function DiscoveryLoadingState() {
         </div>
       </div>
 
-      {/* CSS for fade animation */}
+      {/* CSS for custom transition duration */}
       <style jsx>{`
-        @keyframes fade-in {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-fade-in {
-          animation: fade-in 0.5s ease-out;
+        .duration-400 {
+          transition-duration: 400ms;
         }
       `}</style>
     </div>
@@ -182,7 +189,7 @@ function DiscoveryLoadingState() {
 function getTimeAgo(timestamp: number): string {
   const now = Date.now() / 1000;
   const diff = now - timestamp;
-  
+
   if (diff < 60) return "just now";
   if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
@@ -190,10 +197,149 @@ function getTimeAgo(timestamp: number): string {
   return `${Math.floor(diff / 2592000)} months ago`;
 }
 
-export default function RedditPage() {
+// Subscription status card component
+function SubscriptionStatusCard({
+  user,
+  onSubscribe,
+}: {
+  user: User;
+  onSubscribe: () => void;
+}) {
+  const trialActive = isTrialActive(user);
+  const trialDays = getTrialDaysRemaining(user);
+  const currentTier = user.subscription_tier;
+
+  // Determine subscription status
+  // Support both old format (MONTHLY, ANNUALLY) and new format (STARTER_MONTHLY, etc.)
+  const isPaid = currentTier === "MONTHLY" ||
+    currentTier === "ANNUALLY" ||
+    currentTier?.startsWith("STARTER") ||
+    currentTier?.startsWith("GROWTH") ||
+    currentTier?.startsWith("PRO");
+
+  const isExpired = currentTier === "EXPIRED" ||
+    (currentTier === "FREE_TRIAL" && !trialActive);
+
+  // Get display info based on status
+  const getStatusInfo = () => {
+    if (isPaid) {
+      // Determine plan name and billing cycle
+      let tierName = "Pro";
+      let billingCycle = "Monthly";
+
+      if (currentTier === "MONTHLY") {
+        tierName = "Pro";
+        billingCycle = "Monthly";
+      } else if (currentTier === "ANNUALLY") {
+        tierName = "Pro";
+        billingCycle = "Annual";
+      } else if (currentTier?.includes("_")) {
+        tierName = currentTier.split("_")[0];
+        tierName = tierName.charAt(0) + tierName.slice(1).toLowerCase();
+        billingCycle = currentTier.includes("ANNUALLY") ? "Annual" : "Monthly";
+      }
+
+      return {
+        title: `${tierName} Plan`,
+        subtitle: `${billingCycle} subscription active`,
+        showButton: false,
+        bgColor: "bg-green-50",
+        borderColor: "border-green-200",
+        iconColor: "text-green-500",
+        titleColor: "text-green-700",
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        ),
+      };
+    }
+
+    if (trialActive) {
+      return {
+        title: "Free Trial Active",
+        subtitle: `${trialDays} day${trialDays !== 1 ? "s" : ""} left in trial. Subscribe to keep real-time monitoring active.`,
+        showButton: true,
+        bgColor: "bg-orange-50",
+        borderColor: "border-orange-200",
+        iconColor: "text-orange-500",
+        titleColor: "text-orange-700",
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        ),
+      };
+    }
+
+    if (isExpired) {
+      return {
+        title: "Trial Expired",
+        subtitle: "Subscribe to continue monitoring Reddit for leads.",
+        showButton: true,
+        bgColor: "bg-red-50",
+        borderColor: "border-red-200",
+        iconColor: "text-red-500",
+        titleColor: "text-red-700",
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        ),
+      };
+    }
+
+    // Fallback: show trial status for FREE_TRIAL or unknown tiers
+    return {
+      title: "Free Trial",
+      subtitle: "Subscribe to unlock all features.",
+      showButton: true,
+      bgColor: "bg-orange-50",
+      borderColor: "border-orange-200",
+      iconColor: "text-orange-500",
+      titleColor: "text-orange-700",
+      icon: (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+    };
+  };
+
+  const status = getStatusInfo();
+
+  return (
+    <div className="px-4 pb-4">
+      <div className={`p-3 ${status.bgColor} border ${status.borderColor} rounded-xl`}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className={status.iconColor}>{status.icon}</span>
+          <span className={`text-sm font-semibold ${status.titleColor}`}>{status.title}</span>
+        </div>
+        <p className="text-xs text-gray-600 mb-3">{status.subtitle}</p>
+        {status.showButton && (
+          <button
+            onClick={onSubscribe}
+            className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            </svg>
+            Subscribe Now
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RedditPageContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   const [step, setStep] = useState<Step>("campaigns");
   const [campaigns, setCampaigns] = useState<RedditCampaign[]>([]);
   const [currentCampaign, setCurrentCampaign] = useState<RedditCampaign | null>(null);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [subreddits, setSubreddits] = useState<SubredditInfo[]>([]);
   const [selectedSubreddits, setSelectedSubreddits] = useState<Map<string, SubredditInfo>>(new Map());
   const [leads, setLeads] = useState<RedditLead[]>([]);
@@ -208,10 +354,31 @@ export default function RedditPage() {
   const [selectedSubreddit, setSelectedSubreddit] = useState<string>("all");
   
   // Lead counts by status
-  const [leadCounts, setLeadCounts] = useState({ new: 0, reviewed: 0, contacted: 0 });
+  const [leadCounts, setLeadCounts] = useState({ new: 0, contacted: 0 });
   
   // Sort order state
   const [sortOrder, setSortOrder] = useState<"relevancy" | "time">("relevancy");
+
+  // Helper function to get the first lead from a sorted list
+  const getFirstSortedLead = useCallback((leadsArray: RedditLead[], order: "relevancy" | "time" = "relevancy"): RedditLead | null => {
+    if (leadsArray.length === 0) return null;
+
+    const sorted = [...leadsArray].sort((a, b) => {
+      if (order === "relevancy") {
+        const scoreA = a.relevancy_score || 0;
+        const scoreB = b.relevancy_score || 0;
+        if (scoreB !== scoreA) return scoreB - scoreA;
+        return (b.created_utc || 0) - (a.created_utc || 0);
+      } else {
+        const timeA = a.created_utc || 0;
+        const timeB = b.created_utc || 0;
+        if (timeB !== timeA) return timeB - timeA;
+        return (b.relevancy_score || 0) - (a.relevancy_score || 0);
+      }
+    });
+
+    return sorted[0];
+  }, []);
   
   // Add Subreddit modal states
   const [showAddSubredditModal, setShowAddSubredditModal] = useState(false);
@@ -227,10 +394,24 @@ export default function RedditPage() {
   // Success dialog state
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
 
+  // Streaming progress states
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamProgress, setStreamProgress] = useState<SSEProgressEvent | null>(null);
+  const [streamingLeads, setStreamingLeads] = useState<SSELeadEvent[]>([]);
+  const [streamComplete, setStreamComplete] = useState<SSECompleteEvent | null>(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
   // Subreddit display states
   const [showMoreHighScore, setShowMoreHighScore] = useState(false);
   const [showLowScore, setShowLowScore] = useState(false);
+
+  // User info state
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [showBillingDialog, setShowBillingDialog] = useState(false);
   const MAX_SUBREDDIT_SELECTION = 15;
+
+  // Ref to prevent double API calls in StrictMode
+  const initPageCalledRef = useRef(false);
 
   // Campaign settings menu state
   const [openSettingsMenu, setOpenSettingsMenu] = useState<number | null>(null);
@@ -253,10 +434,88 @@ export default function RedditPage() {
   });
   const [isResizing, setIsResizing] = useState(false);
 
-  // Load campaigns on mount
-  useEffect(() => {
-    loadCampaigns();
+  // Helper to update URL without full navigation
+  const updateURL = useCallback((newStep: Step, campaignId?: number) => {
+    const params = new URLSearchParams();
+    if (newStep !== "campaigns") {
+      params.set("view", newStep);
+    }
+    if (campaignId) {
+      params.set("id", campaignId.toString());
+    }
+    const newUrl = params.toString() ? `/reddit?${params.toString()}` : "/reddit";
+    window.history.replaceState({}, "", newUrl);
   }, []);
+
+  // Load campaigns and restore state from URL on mount
+  useEffect(() => {
+    // Prevent double API calls in React StrictMode
+    if (initPageCalledRef.current) return;
+    initPageCalledRef.current = true;
+
+    async function initPage() {
+      try {
+        setLoading(true);
+        const data = await fetchRedditCampaigns();
+        setCampaigns(data);
+
+        // Restore state from URL params
+        const view = searchParams.get("view") as Step | null;
+        const campaignId = searchParams.get("id");
+
+        if (view && campaignId) {
+          const campaign = data.find((c: RedditCampaign) => c.id === parseInt(campaignId));
+          if (campaign) {
+            setCurrentCampaign(campaign);
+            if (view === "leads") {
+              // Load leads for this campaign
+              const leadsData = await fetchRedditLeads(campaign.id, "NEW");
+              setLeads(leadsData.leads);
+              setLeadCounts({
+                new: leadsData.new_leads,
+                contacted: leadsData.contacted_leads
+              });
+              // Select first lead based on sort order (default: relevancy)
+              setSelectedLead(getFirstSortedLead(leadsData.leads, "relevancy"));
+              setStep("leads");
+            } else if (view === "discover") {
+              const discovered = await discoverSubreddits(campaign.id);
+              setSubreddits(discovered);
+              setStep("discover");
+            }
+          }
+        } else if (view === "create") {
+          setStep("create");
+        }
+
+        setInitialLoadDone(true);
+      } catch (err) {
+        setError("Failed to load radars");
+      } finally {
+        setLoading(false);
+      }
+    }
+    initPage();
+  }, [searchParams]);
+
+  // Update URL when step or campaign changes (after initial load)
+  useEffect(() => {
+    if (initialLoadDone) {
+      updateURL(step, currentCampaign?.id);
+    }
+  }, [step, currentCampaign?.id, initialLoadDone, updateURL]);
+
+  // Load user info on mount
+  useEffect(() => {
+    const user = getUser();
+    setCurrentUser(user);
+  }, []);
+
+  // Calculate isExpired at component level for use in handlers
+  const currentTier = currentUser?.subscription_tier;
+  const trialActive = isTrialActive(currentUser);
+  const isExpired = currentTier === "EXPIRED" ||
+    (currentTier === "FREE_TRIAL" && !trialActive);
 
   async function loadCampaigns() {
     try {
@@ -316,6 +575,12 @@ export default function RedditPage() {
   }
 
   async function handleViewLeads(campaign: RedditCampaign, status?: string) {
+    // Check if trial expired - show billing dialog instead
+    if (isExpired) {
+      setShowBillingDialog(true);
+      return;
+    }
+
     try {
       setLoading(true);
       setCurrentCampaign(campaign);
@@ -325,10 +590,10 @@ export default function RedditPage() {
       setLeads(data.leads);
       setLeadCounts({
         new: data.new_leads,
-        reviewed: data.reviewed_leads,
         contacted: data.contacted_leads
       });
-      setSelectedLead(data.leads.length > 0 ? data.leads[0] : null);
+      // Select first lead based on current sort order
+      setSelectedLead(getFirstSortedLead(data.leads, sortOrder));
       setStep("leads");
     } catch (err) {
       setError("Failed to load leads");
@@ -355,8 +620,8 @@ export default function RedditPage() {
       // Copy suggested comment to clipboard
       await navigator.clipboard.writeText(lead.suggested_comment || '');
       
-      // Update status to "Commented" (REVIEWED)
-      await handleUpdateStatus(lead.id, "REVIEWED");
+      // Update status to "Contacted"
+      await handleUpdateStatus(lead.id, "CONTACTED");
       
       // Open Reddit post in new tab
       window.open(lead.post_url, '_blank');
@@ -376,7 +641,7 @@ export default function RedditPage() {
       // Copy suggested DM to clipboard
       await navigator.clipboard.writeText(lead.suggested_dm || '');
       
-      // Update status to "DMed" (CONTACTED)
+      // Update status to "Contacted"
       await handleUpdateStatus(lead.id, "CONTACTED");
       
       // Open Reddit user page in new tab
@@ -407,25 +672,74 @@ export default function RedditPage() {
   }
 
   async function handleRunNow(campaign: RedditCampaign) {
-    try {
-      setLoading(true);
-      setError("");
-      const result = await runCampaignNow(campaign.id);
-      
-      const { summary } = result;
-      if (summary.subreddits_polled === 0) {
-        alert(`⚠️ No subreddits to poll. Please make sure you've selected subreddits for this radar.`);
-      } else if (summary.total_leads_created === 0) {
-        alert(`✅ Polling complete!\nChecked ${summary.subreddits_polled} subreddit(s) and found ${summary.total_posts_found} posts, but none were relevant enough (score < 50%).\n\nTry adjusting your business description or selecting different subreddits.`);
-      } else {
-        alert(`✅ Success!\nFound ${summary.total_leads_created} new leads from ${summary.subreddits_polled} subreddit(s).`);
+    // Use streaming version for real-time progress
+    setIsStreaming(true);
+    setStreamProgress(null);
+    setStreamingLeads([]);
+    setStreamComplete(null);
+    setError("");
+
+    const cleanup = runCampaignNowStream(
+      campaign.id,
+      (event: SSEEvent) => {
+        switch (event.type) {
+          case "progress":
+            setStreamProgress(event.data);
+            break;
+          case "lead":
+            setStreamingLeads((prev) => [...prev, event.data]);
+            break;
+          case "complete":
+            setStreamComplete(event.data);
+            setIsStreaming(false);
+            // Refresh campaigns and leads
+            loadCampaigns();
+            if (currentCampaign?.id === campaign.id) {
+              handleViewLeads(campaign);
+            }
+            break;
+          case "error":
+            setError(event.data.message || "Streaming failed");
+            setIsStreaming(false);
+            break;
+        }
+      },
+      (error: Error) => {
+        setError(error.message || "Failed to run radar");
+        setIsStreaming(false);
       }
-      
-      loadCampaigns();
-    } catch (err: any) {
-      setError(err.message || "Failed to run radar");
-    } finally {
-      setLoading(false);
+    );
+
+    // Store cleanup function (could be used for cancel button)
+    return cleanup;
+  }
+
+  // On-demand suggestion loading when selecting a lead
+  async function handleSelectLead(lead: RedditLead) {
+    setSelectedLead(lead);
+
+    // Check if suggestions need to be loaded
+    if (!lead.has_suggestions && !lead.suggested_comment && !lead.suggested_dm) {
+      setLoadingSuggestions(true);
+      try {
+        const suggestions = await generateLeadSuggestions(lead.id);
+        // Update the lead in state with new suggestions
+        const updatedLead = {
+          ...lead,
+          suggested_comment: suggestions.suggested_comment,
+          suggested_dm: suggestions.suggested_dm,
+          has_suggestions: true,
+        };
+        setSelectedLead(updatedLead);
+        // Also update in leads array
+        setLeads((prev) =>
+          prev.map((l) => (l.id === lead.id ? updatedLead : l))
+        );
+      } catch (err) {
+        console.error("Failed to generate suggestions:", err);
+      } finally {
+        setLoadingSuggestions(false);
+      }
     }
   }
 
@@ -580,254 +894,280 @@ export default function RedditPage() {
   return (
     <ProtectedRoute>
       <DashboardLayout>
-        <div className="p-8">
-          <div className="max-w-7xl mx-auto">
-          <div className="mb-12">
-            <h1 className="text-3xl font-bold text-gray-900">Reddit Lead Generation</h1>
-            <p className="text-gray-600 mt-2">
-              AI-powered lead discovery from Reddit discussions
-            </p>
-          </div>
+        {/* Wrapper for non-leads views */}
+        {step !== "leads" && (
+          <div className="p-8">
+            <div className="max-w-7xl mx-auto">
+              {error && (
+                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+                  {error}
+                </div>
+              )}
 
-        {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-            {error}
-          </div>
-        )}
-
-        {/* Step: Radars List */}
-        {step === "campaigns" && (
+              {/* Step: Radars List */}
+              {step === "campaigns" && (
           <div>
-            <div className="mb-6 flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-gray-900">Your Radars</h2>
-              <button
-                onClick={() => setStep("create")}
-                className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800"
-              >
-                + New Radar
-              </button>
-            </div>
-
-            {loading ? (
-              <div className="text-center py-12">
-                <div className="inline-flex items-center gap-3 text-gray-500">
-                  <svg className="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  <span className="text-lg">Loading your radars...</span>
-                </div>
-              </div>
-            ) : campaigns.length === 0 ? (
-              <div className="text-center py-12 bg-white rounded-lg border">
-                <p className="text-gray-500 mb-4">No radars yet</p>
-                <button
-                  onClick={() => setStep("create")}
-                  className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800"
-                >
-                  Create Your First Radar
-                </button>
-              </div>
-            ) : (
-              <div className="grid gap-4">
-                {campaigns.map((campaign) => (
-                  <div
-                    key={campaign.id}
-                    className="bg-white p-6 rounded-lg border hover:shadow-md transition"
-                  >
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span
-                            className={`px-3 py-1 rounded-full text-sm font-medium ${
-                              campaign.status === "ACTIVE"
-                                ? "bg-green-100 text-green-700"
-                                : campaign.status === "DISCOVERING"
-                                ? "bg-gray-800 text-white"
-                                : "bg-gray-100 text-gray-700"
-                            }`}
-                          >
-                            {campaign.status}
-                          </span>
-                        </div>
-                        <p className="text-gray-900 font-medium mb-2">
-                          {campaign.business_description}
-                        </p>
-                        <div className="flex gap-4 text-sm text-gray-600">
-                          <span>{campaign.subreddits_count} subreddits</span>
-                          <span>{campaign.leads_count} leads</span>
-                          <span>
-                            Polls every {campaign.poll_interval_hours}h
-                          </span>
-                          {campaign.last_poll_at && (
-                            <span>
-                              Last explored: {getTimeAgo(new Date(campaign.last_poll_at).getTime() / 1000)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        <button
-                          onClick={() => handleViewLeads(campaign)}
-                          className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800"
-                        >
-                          View Leads
-                        </button>
-                        {/* Settings dropdown */}
-                        <div className="relative">
-                          <button
-                            onClick={() => setOpenSettingsMenu(openSettingsMenu === campaign.id ? null : campaign.id)}
-                            className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                            title="Radar settings"
-                          >
-                            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                            </svg>
-                          </button>
-                          {openSettingsMenu === campaign.id && (
-                            <>
-                              {/* Backdrop to close menu */}
-                              <div
-                                className="fixed inset-0 z-10"
-                                onClick={() => setOpenSettingsMenu(null)}
-                              />
-                              {/* Dropdown menu */}
-                              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border z-20">
-                                {campaign.status === "ACTIVE" && (
-                                  <button
-                                    onClick={() => {
-                                      handleRunNow(campaign);
-                                      setOpenSettingsMenu(null);
-                                    }}
-                                    disabled={loading}
-                                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-3 disabled:opacity-50"
-                                  >
-                                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                    </svg>
-                                    Run Now
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => {
-                                    handleToggleCampaign(campaign);
-                                    setOpenSettingsMenu(null);
-                                  }}
-                                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-3"
-                                >
-                                  {campaign.status === "ACTIVE" ? (
-                                    <>
-                                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                      </svg>
-                                      Pause
-                                    </>
-                                  ) : (
-                                    <>
-                                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                      </svg>
-                                      Resume
-                                    </>
-                                  )}
-                                </button>
-                                <div className="border-t my-1"></div>
-                                <button
-                                  onClick={() => {
-                                    handleDeleteCampaign(campaign);
-                                    setOpenSettingsMenu(null);
-                                  }}
-                                  className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-3"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
-                                  Delete
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* How It Works Section */}
-            <div className="mt-12 mb-12 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 p-8 shadow-sm">
-              <div className="flex items-center gap-3 mb-8">
-                <div className="h-px bg-gradient-to-r from-gray-300 to-transparent flex-1"></div>
-                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">How It Works</h3>
-                <div className="h-px bg-gradient-to-l from-gray-300 to-transparent flex-1"></div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative">
-                {/* Arrow connector between steps - desktop only */}
-                <div className="hidden md:block absolute top-12 left-1/3 right-1/3 h-px">
-                  <div className="relative h-full">
-                    <div className="absolute inset-0 flex items-center justify-between px-4">
-                      <svg className="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                      </svg>
-                      <svg className="w-6 h-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Step 1 */}
-                <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md hover:border-gray-300 transition-all group text-center">
-                  <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform mx-auto mb-4">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  </div>
-                  <div className="flex items-center gap-2 mb-3 justify-center">
-                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Step 1</span>
-                    <div className="h-px bg-gray-200 w-12"></div>
-                  </div>
-                  <h4 className="text-base font-semibold text-gray-900 mb-2">Discover Communities</h4>
-                  <p className="text-sm text-gray-600 leading-relaxed">
-                    Describe your business and our AI finds relevant subreddits where your potential customers are active.
+            {/* Page Header Card */}
+            <div className="bg-white rounded-2xl p-8 mb-8 shadow-sm border border-gray-100">
+              <div className="flex items-center gap-4">
+                {/* Reddit Logo */}
+                <img
+                  src="https://www.redditstatic.com/desktop2x/img/favicon/android-icon-192x192.png"
+                  alt="Reddit"
+                  className="w-12 h-12 flex-shrink-0"
+                />
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900">Reddit Lead Generation</h1>
+                  <p className="text-gray-500 mt-1 text-lg">
+                    AI-powered lead discovery from Reddit discussions
                   </p>
                 </div>
+              </div>
+            </div>
 
-                {/* Step 2 */}
-                <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md hover:border-gray-300 transition-all group text-center">
-                  <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform mx-auto mb-4">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {/* Your Radars Section */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+              {/* Section Header */}
+              <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gray-900 rounded-xl flex items-center justify-center">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
                   </div>
-                  <div className="flex items-center gap-2 mb-3 justify-center">
-                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Step 2</span>
-                    <div className="h-px bg-gray-200 w-12"></div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900">Your Radars</h2>
+                    <p className="text-sm text-gray-500">{campaigns.length} active radar{campaigns.length !== 1 ? 's' : ''}</p>
                   </div>
-                  <h4 className="text-base font-semibold text-gray-900 mb-2">Track Posts</h4>
-                  <p className="text-sm text-gray-600 leading-relaxed">
-                    We monitor discussions and identify high-intent posts from people looking for solutions like yours.
-                  </p>
                 </div>
+                <button
+                  onClick={() => setStep("create")}
+                  className="px-5 py-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium flex items-center gap-2 shadow-sm"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                  </svg>
+                  New Radar
+                </button>
+              </div>
 
-                {/* Step 3 */}
-                <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md hover:border-gray-300 transition-all group text-center">
-                  <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform mx-auto mb-4">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
+              {/* Radars Content */}
+              <div className="p-6 pb-8">
+                {loading ? (
+                  <div className="text-center py-16">
+                    <div className="inline-flex items-center gap-3 text-gray-500">
+                      <svg className="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      <span className="text-lg">Loading your radars...</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 mb-3 justify-center">
-                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Step 3</span>
-                    <div className="h-px bg-gray-200 w-12"></div>
+                ) : campaigns.length === 0 ? (
+                  <div className="text-center py-16">
+                    <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                    </div>
+                    <p className="text-gray-600 mb-2 font-medium">No radars yet</p>
+                    <p className="text-gray-400 text-sm mb-6">Create your first radar to start discovering leads</p>
+                    <button
+                      onClick={() => setStep("create")}
+                      className="px-6 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium"
+                    >
+                      Create Your First Radar
+                    </button>
                   </div>
-                  <h4 className="text-base font-semibold text-gray-900 mb-2">Engage & Convert</h4>
-                  <p className="text-sm text-gray-600 leading-relaxed">
-                    Review AI-generated responses and engage with potential customers at the perfect moment.
-                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {campaigns.map((campaign) => (
+                      <div
+                        key={campaign.id}
+                        className="bg-white border border-gray-200 rounded-xl p-5 hover:border-gray-300 hover:shadow-md transition-all duration-200"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1 min-w-0">
+                            {/* Status Badge & Title Row */}
+                            <div className="flex items-center gap-3 mb-3">
+                              <span
+                                className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${
+                                  campaign.status === "ACTIVE"
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : campaign.status === "DISCOVERING"
+                                    ? "bg-gray-900 text-white"
+                                    : "bg-gray-100 text-gray-600"
+                                }`}
+                              >
+                                {campaign.status}
+                              </span>
+                            </div>
+
+                            {/* Business Description */}
+                            <h3 className="text-gray-900 font-semibold text-lg mb-3 truncate">
+                              {campaign.business_description}
+                            </h3>
+
+                            {/* Stats Row */}
+                            <div className="flex flex-wrap items-center gap-4 text-sm">
+                              <div className="flex items-center gap-2 text-gray-600 bg-gray-50 px-3 py-1.5 rounded-lg">
+                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                                <span className="font-medium">{campaign.subreddits_count}</span>
+                                <span className="text-gray-400">subreddits</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-gray-600 bg-gray-50 px-3 py-1.5 rounded-lg">
+                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                </svg>
+                                <span className="font-medium">{campaign.leads_count}</span>
+                                <span className="text-gray-400">leads</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex gap-2 items-center ml-4 flex-shrink-0">
+                            <button
+                              onClick={() => handleViewLeads(campaign)}
+                              className="px-5 py-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium text-sm"
+                            >
+                              View Leads
+                            </button>
+                            {/* Settings dropdown */}
+                            <div className="relative">
+                              <button
+                                onClick={() => setOpenSettingsMenu(openSettingsMenu === campaign.id ? null : campaign.id)}
+                                className="p-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                                title="Radar settings"
+                              >
+                                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                                </svg>
+                              </button>
+                              {openSettingsMenu === campaign.id && (
+                                <>
+                                  {/* Backdrop to close menu */}
+                                  <div
+                                    className="fixed inset-0 z-10"
+                                    onClick={() => setOpenSettingsMenu(null)}
+                                  />
+                                  {/* Dropdown menu */}
+                                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 z-20 overflow-hidden">
+                                    <button
+                                      onClick={() => {
+                                        handleToggleCampaign(campaign);
+                                        setOpenSettingsMenu(null);
+                                      }}
+                                      className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                                    >
+                                      {campaign.status === "ACTIVE" ? (
+                                        <>
+                                          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                          </svg>
+                                          Pause
+                                        </>
+                                      ) : (
+                                        <>
+                                          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                          </svg>
+                                          Resume
+                                        </>
+                                      )}
+                                    </button>
+                                    <div className="border-t border-gray-100"></div>
+                                    <button
+                                      onClick={() => {
+                                        handleDeleteCampaign(campaign);
+                                        setOpenSettingsMenu(null);
+                                      }}
+                                      className="w-full px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                      Delete
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* How It Works Section */}
+            <div className="mt-10 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              {/* Section Header */}
+              <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
+                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider text-center">How It Works</h3>
+              </div>
+
+              {/* Steps Grid */}
+              <div className="p-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Step 1 */}
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-6 border border-gray-100 hover:shadow-md transition-shadow">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <span className="inline-block px-2 py-0.5 bg-gray-900 text-white text-xs font-semibold rounded-full mb-2">1</span>
+                        <h4 className="text-base font-semibold text-gray-900 mb-2">Discover Communities</h4>
+                        <p className="text-sm text-gray-500 leading-relaxed">
+                          Describe your business and our AI finds relevant subreddits where your potential customers are active.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-6 border border-gray-100 hover:shadow-md transition-shadow">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <span className="inline-block px-2 py-0.5 bg-gray-900 text-white text-xs font-semibold rounded-full mb-2">2</span>
+                        <h4 className="text-base font-semibold text-gray-900 mb-2">Track Posts</h4>
+                        <p className="text-sm text-gray-500 leading-relaxed">
+                          We monitor discussions and identify high-intent posts from people looking for solutions like yours.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-6 border border-gray-100 hover:shadow-md transition-shadow">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <span className="inline-block px-2 py-0.5 bg-gray-900 text-white text-xs font-semibold rounded-full mb-2">3</span>
+                        <h4 className="text-base font-semibold text-gray-900 mb-2">Engage & Convert</h4>
+                        <p className="text-sm text-gray-500 leading-relaxed">
+                          Review AI-generated responses and engage with potential customers at the perfect moment.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -836,39 +1176,70 @@ export default function RedditPage() {
 
         {/* Step: Create Radar */}
         {step === "create" && (
-          <div className="bg-white p-8 rounded-lg border">
+          <div className="max-w-2xl mx-auto">
             <button
               onClick={() => setStep("campaigns")}
-              className="text-gray-600 mb-6 hover:text-gray-900"
+              className="flex items-center gap-2 text-gray-600 mb-6 hover:text-gray-900 transition-colors"
             >
-              ← Back to Radars
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+              </svg>
+              Back to Radars
             </button>
 
-            <h2 className="text-2xl font-semibold mb-6">Create New Radar</h2>
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              {/* Header */}
+              <div className="px-8 py-6 border-b border-gray-100 bg-gray-50/50">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900">Create New Radar</h2>
+                    <p className="text-sm text-gray-500">Set up automated lead discovery</p>
+                  </div>
+                </div>
+              </div>
 
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Describe Your Business
-              </label>
-              <textarea
-                value={businessDescription}
-                onChange={(e) => setBusinessDescription(e.target.value)}
-                className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                rows={4}
-                placeholder="e.g., I sell project management SaaS for small teams"
-              />
-              <p className="text-sm text-gray-500 mt-2">
-                Be specific about your product, target audience, and problems you solve
-              </p>
+              {/* Form Content */}
+              <div className="p-8">
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Describe Your Business
+                  </label>
+                  <textarea
+                    value={businessDescription}
+                    onChange={(e) => setBusinessDescription(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-shadow resize-none"
+                    rows={5}
+                    placeholder="e.g., I sell project management SaaS for small teams"
+                  />
+                  <p className="text-sm text-gray-400 mt-3">
+                    Be specific about your product, target audience, and problems you solve
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleCreateCampaign}
+                  disabled={loading}
+                  className="w-full px-6 py-3.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-colors font-medium text-base"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Creating Radar...
+                    </span>
+                  ) : (
+                    "Create Radar & Discover Subreddits"
+                  )}
+                </button>
+              </div>
             </div>
-
-            <button
-              onClick={handleCreateCampaign}
-              disabled={loading}
-              className="w-full px-6 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
-            >
-              {loading ? "Creating Radar..." : "Create Radar & Discover Subreddits"}
-            </button>
           </div>
         )}
 
@@ -1041,13 +1412,17 @@ export default function RedditPage() {
             )}
           </div>
         )}
+            </div>
+          </div>
+        )}
 
         {/* Step: View Leads - Inbox Style */}
         {step === "leads" && currentCampaign && (
-          <div className="fixed top-16 left-0 right-0 bottom-0 bg-white flex">
+          <div className="fixed top-0 left-0 right-0 bottom-0 bg-white flex">
             {/* Left Sidebar - Subreddit Filters */}
-            <div className="w-64 border-r bg-gray-50 overflow-y-auto">
-              <div className="pt-8 px-6 pb-6">
+            <div className="w-64 border-r bg-gray-50 flex flex-col">
+              {/* Scrollable content area */}
+              <div className="flex-1 overflow-y-auto pt-8 px-6 pb-6">
                 <button
                   onClick={() => {
                     setStep("campaigns");
@@ -1059,21 +1434,42 @@ export default function RedditPage() {
                   <span>←</span> Back to Radars
                 </button>
 
-                <h2 className="text-xl font-bold mb-6">Inbox</h2>
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-bold">Inbox</h2>
+                    {/* Scanning indicator */}
+                    {isStreaming && (
+                      <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 text-green-700 rounded-full border border-green-200 animate-pulse">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-ping" />
+                        <span className="text-xs font-medium">Scanning...</span>
+                      </div>
+                    )}
+                  </div>
+                  {/* Overall Relevancy Badge */}
+                  {!isStreaming && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 text-green-700 rounded-lg border border-green-200">
+                      <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                      <span className="text-xs font-semibold">
+                        {leads.length > 0 ? Math.round(leads.reduce((acc, l) => {
+                          const score = l.relevancy_score || 0;
+                          return acc + (score <= 1 ? score * 100 : score);
+                        }, 0) / leads.length) : 0}%
+                      </span>
+                    </div>
+                  )}
+                </div>
 
                 {/* Status Tabs */}
                 <div className="mb-6">
                   <div className="space-y-1">
-                    {["Inbox", "Commented", "DMed"].map((tab, idx) => {
+                    {["Inbox", "Contacted"].map((tab, idx) => {
                       const statusMap: Record<string, string> = {
                         "Inbox": "NEW",
-                        "Commented": "REVIEWED",
-                        "DMed": "CONTACTED"
+                        "Contacted": "CONTACTED"
                       };
                       const countMap: Record<string, number> = {
                         "Inbox": leadCounts.new,
-                        "Commented": leadCounts.reviewed,
-                        "DMed": leadCounts.contacted
+                        "Contacted": leadCounts.contacted
                       };
                       const status = statusMap[tab];
                       const count = countMap[tab];
@@ -1153,6 +1549,26 @@ export default function RedditPage() {
                   })}
                 </div>
               </div>
+
+              {/* Subscription Status Card */}
+              {currentUser && (
+                <SubscriptionStatusCard
+                  user={currentUser}
+                  onSubscribe={() => setShowBillingDialog(true)}
+                />
+              )}
+
+              {/* User Profile Section */}
+              {currentUser && (
+                <div className="border-t border-gray-200 px-3 py-3">
+                  <UserMenu
+                    user={currentUser}
+                    position="top"
+                    compact
+                    onBilling={() => setShowBillingDialog(true)}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Center - Leads List */}
@@ -1160,19 +1576,6 @@ export default function RedditPage() {
               {/* Header */}
               <div className="border-b px-6 pt-8 pb-4 flex items-center justify-between bg-white">
                 <div className="flex items-center gap-4">
-                  {/* Overall Relevancy Badge */}
-                  <div className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg border border-green-200">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span className="text-sm font-semibold">
-                      {leads.length > 0 ? Math.round(leads.reduce((acc, l) => {
-                        const score = l.relevancy_score || 0;
-                        // Support both old (0.0-1.0) and new (0-100) formats
-                        return acc + (score <= 1 ? score * 100 : score);
-                      }, 0) / leads.length) : 0}%
-                    </span>
-                    <span className="text-xs text-green-600">Overall relevancy</span>
-                  </div>
-                  
                   {/* Sort Dropdown */}
                   <div className="relative">
                     <button
@@ -1203,8 +1606,8 @@ export default function RedditPage() {
                     </select>
                   </div>
 
-                  {/* Run Now Button */}
-                  {currentCampaign && currentCampaign.status === "ACTIVE" && (
+                  {/* Run Now Button - hidden in production via env var */}
+                  {process.env.NEXT_PUBLIC_SHOW_FETCH_LEADS_BUTTON !== 'false' && currentCampaign && currentCampaign.status === "ACTIVE" && (
                     <button
                       onClick={() => handleRunNow(currentCampaign)}
                       disabled={loading}
@@ -1255,7 +1658,7 @@ export default function RedditPage() {
                     <p className="text-sm text-gray-400 mt-2">
                       Try changing filters or wait for the next polling cycle
                     </p>
-                    {currentCampaign && currentCampaign.status === "ACTIVE" && (
+                    {process.env.NEXT_PUBLIC_SHOW_FETCH_LEADS_BUTTON !== 'false' && currentCampaign && currentCampaign.status === "ACTIVE" && (
                       <button
                         onClick={() => handleRunNow(currentCampaign)}
                         disabled={loading}
@@ -1269,7 +1672,7 @@ export default function RedditPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="divide-y">
+                  <div className="p-4 space-y-3">
                     {leads
                       .filter(l => selectedSubreddit === "all" || l.subreddit_name === selectedSubreddit)
                       .sort((a, b) => {
@@ -1300,49 +1703,119 @@ export default function RedditPage() {
                         const score = lead.relevancy_score || 0;
                         // Support both old (0.0-1.0) and new (0-100) formats
                         const relevancyPercent = Math.round(score <= 1 ? score * 100 : score);
+                        // Get score tier label and color
+                        const getScoreTier = (score: number) => {
+                          if (score >= 90) return { label: "HOT", color: "text-red-600", bg: "bg-red-50", border: "border-red-200" };
+                          if (score >= 80) return { label: "HIGH", color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-200" };
+                          if (score >= 70) return { label: "GOOD", color: "text-yellow-600", bg: "bg-yellow-50", border: "border-yellow-200" };
+                          if (score >= 60) return { label: "MED", color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200" };
+                          return { label: "LOW", color: "text-gray-500", bg: "bg-gray-50", border: "border-gray-200" };
+                        };
+                        const tier = getScoreTier(relevancyPercent);
+                        // Format timestamp for display
+                        const formatTimestamp = () => {
+                          if (!lead.created_utc) return '';
+                          const date = new Date(lead.created_utc * 1000);
+                          return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' | ' + date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                        };
                         return (
                           <div
                             key={lead.id}
-                            onClick={() => setSelectedLead(lead)}
-                            className={`px-6 py-4 cursor-pointer transition ${
+                            onClick={() => handleSelectLead(lead)}
+                            className={`bg-white rounded-xl border shadow-sm cursor-pointer transition-all hover:shadow-md ${
                               selectedLead?.id === lead.id
-                                ? "bg-gray-50 border-l-4 border-gray-900"
-                                : "hover:bg-gray-50"
+                                ? "ring-2 ring-gray-900 border-gray-900"
+                                : "border-gray-200 hover:border-gray-300"
                             }`}
                           >
-                            <div className="flex items-start gap-3">
-                              <div className="flex items-center gap-2 px-2 py-1 bg-green-50 text-green-700 rounded text-xs font-medium">
-                                <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                                {relevancyPercent}%
+                            <div className="flex items-stretch">
+                              {/* Left: Score Section */}
+                              <div className={`flex flex-col items-center justify-center px-4 py-4 ${tier.bg} rounded-l-xl border-r ${tier.border} min-w-[70px]`}>
+                                <span className={`text-2xl font-bold ${tier.color}`}>{relevancyPercent}</span>
+                                <span className={`text-[10px] font-semibold ${tier.color} tracking-wide`}>{tier.label}</span>
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
-                                  <span>u/{lead.author || '[deleted]'}</span>
-                                  <span>•</span>
-                                  <span>r/{lead.subreddit_name || 'unknown'}</span>
-                                  <span>•</span>
-                                  <span>{timeAgo}</span>
+
+                              {/* Middle: Content */}
+                              <div className="flex-1 p-4 min-w-0">
+                                {/* Header: Reddit icon, subreddit, timestamp */}
+                                <div className="flex items-center gap-2 mb-2">
+                                  <svg className="w-5 h-5 text-orange-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/>
+                                  </svg>
+                                  <span className="font-semibold text-sm text-gray-900">r/{lead.subreddit_name || 'unknown'}</span>
+                                  <span className="text-xs text-gray-400">{formatTimestamp()}</span>
                                 </div>
-                                <h3 className="font-semibold text-gray-900 mb-1 truncate">
+
+                                {/* Title */}
+                                <h3 className="font-bold text-gray-900 mb-1 line-clamp-1">
                                   {lead.title || 'Untitled'}
                                 </h3>
-                                <p className="text-sm text-gray-600 line-clamp-2 mb-2">
-                                  {lead.content ? (lead.content.substring(0, 150) + (lead.content.length > 150 ? '...' : '')) : 'No content'}
+
+                                {/* Content preview */}
+                                <p className="text-sm text-gray-600 line-clamp-2 mb-3">
+                                  {lead.content ? (lead.content.substring(0, 180) + (lead.content.length > 180 ? '...' : '')) : 'No content'}
                                 </p>
-                                <div className="flex items-center gap-3 text-xs text-gray-500">
-                                  <span className="flex items-center gap-1">
+
+                                {/* Bottom: Tags and stats */}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                    </svg>
+                                    Lead
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-xs text-gray-500">
                                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
                                     </svg>
                                     {lead.score || 0}
                                   </span>
-                                  <span className="flex items-center gap-1">
+                                  <span className="inline-flex items-center gap-1 text-xs text-gray-500">
                                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                                     </svg>
                                     {lead.num_comments || 0}
                                   </span>
+                                  {lead.author && (
+                                    <span className="text-xs text-gray-400">by u/{lead.author}</span>
+                                  )}
                                 </div>
+                              </div>
+
+                              {/* Right: Action Icons */}
+                              <div className="flex flex-col items-center justify-center gap-2 px-3 border-l border-gray-100">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleUpdateStatus(lead.id, lead.status === "CONTACTED" ? "NEW" : "CONTACTED");
+                                  }}
+                                  className={`p-1.5 rounded-lg transition-colors ${
+                                    lead.status === "CONTACTED"
+                                      ? "text-green-600 bg-green-50 hover:bg-green-100"
+                                      : "text-gray-400 hover:text-green-600 hover:bg-green-50"
+                                  }`}
+                                  title={lead.status === "CONTACTED" ? "Move to inbox" : "Mark as contacted"}
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleUpdateStatus(lead.id, "DISMISSED");
+                                  }}
+                                  className={`p-1.5 rounded-lg transition-colors ${
+                                    lead.status === "DISMISSED"
+                                      ? "text-red-600 bg-red-50 hover:bg-red-100"
+                                      : "text-gray-400 hover:text-red-600 hover:bg-red-50"
+                                  }`}
+                                  title="Dismiss"
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -1369,131 +1842,193 @@ export default function RedditPage() {
                 >
                   <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-12 bg-gray-300 rounded-full" />
                 </div>
-                <div className="p-8">
-                  {/* Header */}
-                  <div className="mb-6">
-                    <div className="flex items-center gap-2 text-sm text-gray-600 mb-3">
-                      <span>u/{selectedLead.author || '[deleted]'}</span>
-                      <span>•</span>
-                      <span>r/{selectedLead.subreddit_name || 'unknown'}</span>
-                      <span>•</span>
-                      <span>{getTimeAgo(selectedLead.created_utc || 0)}</span>
-                    </div>
-                    <h2 className="text-xl font-bold mb-4">{selectedLead.title || 'Untitled'}</h2>
-                    <p className="text-sm text-gray-700 mb-4 whitespace-pre-wrap">
-                      {selectedLead.content || 'No content available'}
-                    </p>
-                    <div className="flex items-center gap-4 text-sm text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
-                        </svg>
-                        {selectedLead.score || 0}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                        </svg>
-                        {selectedLead.num_comments || 0}
-                      </span>
-                    </div>
-                  </div>
+                <div className="p-6 space-y-4 bg-gray-50">
+                  {/* Combined Header + Content Card */}
+                  {(() => {
+                    const score = selectedLead.relevancy_score || 0;
+                    const relevancyPercent = Math.round(score <= 1 ? score * 100 : score);
+                    const getScoreTier = (s: number) => {
+                      if (s >= 90) return { label: "HOT", color: "text-red-600", bg: "bg-red-50", border: "border-red-200" };
+                      if (s >= 80) return { label: "HIGH", color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-200" };
+                      if (s >= 70) return { label: "GOOD", color: "text-yellow-600", bg: "bg-yellow-50", border: "border-yellow-200" };
+                      if (s >= 60) return { label: "MED", color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200" };
+                      return { label: "LOW", color: "text-gray-500", bg: "bg-gray-50", border: "border-gray-200" };
+                    };
+                    const tier = getScoreTier(relevancyPercent);
+                    const formatTimestamp = () => {
+                      if (!selectedLead.created_utc) return '';
+                      const date = new Date(selectedLead.created_utc * 1000);
+                      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' | ' + date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                    };
+                    return (
+                      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                        {/* Header: Score + Meta */}
+                        <div className="flex items-center gap-4 p-4 border-b border-gray-100">
+                          {/* Score Circle */}
+                          <div className={`w-16 h-16 rounded-full ${tier.bg} border-2 ${tier.border} flex flex-col items-center justify-center flex-shrink-0`}>
+                            <span className={`text-xl font-bold ${tier.color} leading-none`}>{relevancyPercent}</span>
+                            <span className={`text-[10px] font-semibold ${tier.color} tracking-wide`}>{tier.label}</span>
+                          </div>
+                          {/* Meta Info */}
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <svg className="w-5 h-5 text-orange-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/>
+                              </svg>
+                              <span className="font-semibold text-sm text-gray-900">r/{selectedLead.subreddit_name || 'unknown'}</span>
+                              <span className="text-xs text-gray-400">{formatTimestamp()}</span>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                </svg>
+                                u/{selectedLead.author || '[deleted]'}
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+                                </svg>
+                                {selectedLead.score || 0}
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                </svg>
+                                {selectedLead.num_comments || 0}
+                              </span>
+                              {selectedLead.post_url && (
+                                <a
+                                  href={selectedLead.post_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs text-orange-500 hover:text-orange-600 transition-colors"
+                                  title="View on Reddit"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                  Open
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        {/* Post Content */}
+                        <div className="p-5">
+                          <h2 className="text-lg font-bold text-gray-900 mb-3">
+                            {selectedLead.title || 'Untitled'}
+                          </h2>
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                            {selectedLead.content || 'No content available'}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
-                  {/* Reasoning */}
-                  <div className="mb-6">
-                    <button className="flex items-center gap-2 text-sm font-medium mb-2 text-gray-700">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {/* Reasoning Card */}
+                  <div className="bg-white rounded-xl border border-green-200 shadow-sm overflow-hidden">
+                    <div className="px-4 py-3 bg-green-50 border-b border-green-200 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                       </svg>
-                      Reasoning
-                    </button>
-                    <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
-                      {selectedLead.relevancy_reason || 'No reasoning available'}
-                    </p>
+                      <span className="text-sm font-semibold text-green-800">Why this is a lead</span>
+                    </div>
+                    <div className="p-4">
+                      <p className="text-sm text-gray-700 leading-relaxed">
+                        {selectedLead.relevancy_reason || 'No reasoning available'}
+                      </p>
+                    </div>
                   </div>
 
-                  {/* Suggested Comment */}
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between mb-2">
-                      <button className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {/* Suggested Comment Card */}
+                  <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
+                    <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
                         </svg>
-                        Suggested comment
-                      </button>
-                      <button className="text-xs text-gray-500 flex items-center gap-1">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                        </svg>
-                        Comment prompt
-                      </button>
+                        <span className="text-sm font-semibold text-amber-800">Suggested Comment</span>
+                      </div>
+                      {loadingSuggestions && (
+                        <span className="text-xs text-amber-600 flex items-center gap-1">
+                          <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Generating...
+                        </span>
+                      )}
                     </div>
-                    <p className="text-sm text-gray-700 bg-amber-50 p-3 rounded mb-2">
-                      {selectedLead.suggested_comment || 'No suggested comment available'}
-                    </p>
-                    <button 
-                      onClick={() => handleCopyAndComment(selectedLead)}
-                      className="w-full px-4 py-2 bg-gray-900 text-white rounded text-sm hover:bg-gray-800 flex items-center justify-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                      Copy & comment manually
-                    </button>
-                  </div>
-
-                  {/* Suggested DM */}
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between mb-2">
-                      <button className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <div className="p-4">
+                      {loadingSuggestions ? (
+                        <div className="animate-pulse">
+                          <div className="h-4 bg-amber-100 rounded w-3/4 mb-2" />
+                          <div className="h-4 bg-amber-100 rounded w-1/2" />
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-700 leading-relaxed mb-4">
+                          {selectedLead.suggested_comment || 'No suggested comment available'}
+                        </p>
+                      )}
+                      <button
+                        onClick={() => handleCopyAndComment(selectedLead)}
+                        disabled={loadingSuggestions || !selectedLead.suggested_comment}
+                        className="w-full px-4 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                         </svg>
-                        Suggested DM
-                      </button>
-                      <button className="text-xs text-gray-500 flex items-center gap-1">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                        </svg>
-                        DM prompt
+                        Copy & Comment
                       </button>
                     </div>
-                    <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded mb-2">
-                      {selectedLead.suggested_dm || 'No suggested DM available'}
-                    </p>
-                    <button 
-                      onClick={() => handleCopyAndDM(selectedLead)}
-                      className="w-full px-4 py-2 bg-gray-900 text-white rounded text-sm hover:bg-gray-800 flex items-center justify-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                      Copy & DM manually
-                    </button>
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    <a
-                      href={selectedLead.post_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 px-4 py-2 border rounded text-sm hover:bg-gray-50 text-center"
-                    >
-                      View on Reddit
-                    </a>
-                    <Dropdown
-                      options={[
-                        { value: "NEW", label: "New" },
-                        { value: "REVIEWED", label: "Reviewed" },
-                        { value: "CONTACTED", label: "Contacted" },
-                        { value: "DISMISSED", label: "Dismissed" },
-                      ]}
-                      value={selectedLead.status}
-                      onChange={(value) => handleUpdateStatus(selectedLead.id, value)}
-                      className="text-sm"
-                    />
+                  {/* Suggested DM Card */}
+                  <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
+                    <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-sm font-semibold text-amber-800">Suggested DM</span>
+                      </div>
+                      {loadingSuggestions && (
+                        <span className="text-xs text-amber-600 flex items-center gap-1">
+                          <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Generating...
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-4">
+                      {loadingSuggestions ? (
+                        <div className="animate-pulse">
+                          <div className="h-4 bg-amber-100 rounded w-3/4 mb-2" />
+                          <div className="h-4 bg-amber-100 rounded w-2/3 mb-2" />
+                          <div className="h-4 bg-amber-100 rounded w-1/2" />
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-700 leading-relaxed mb-4">
+                          {selectedLead.suggested_dm || 'No suggested DM available'}
+                        </p>
+                      )}
+                      <button
+                        onClick={() => handleCopyAndDM(selectedLead)}
+                        disabled={loadingSuggestions || !selectedLead.suggested_dm}
+                        className="w-full px-4 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Copy & DM
+                      </button>
+                    </div>
                   </div>
+
                 </div>
               </div>
             )}
@@ -1665,6 +2200,93 @@ export default function RedditPage() {
           </div>
         )}
 
+      {/* Streaming Progress Modal */}
+      {isStreaming && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6">
+            {/* Simple Progress */}
+            <div className="text-center">
+              {/* Animated icon */}
+              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-6 h-6 text-orange-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              </div>
+
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                {streamProgress?.phase === "fetching" && "Scanning subreddits..."}
+                {streamProgress?.phase === "scoring" && "Analyzing posts..."}
+                {streamProgress?.phase === "suggestions" && "Almost done..."}
+                {!streamProgress && "Starting..."}
+              </h3>
+
+              {/* Progress bar */}
+              {streamProgress && (
+                <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mb-4">
+                  <div
+                    className="h-full bg-orange-500 rounded-full transition-all duration-300"
+                    style={{ width: `${Math.round((streamProgress.current / streamProgress.total) * 100)}%` }}
+                  />
+                </div>
+              )}
+
+              {/* Leads counter */}
+              {streamingLeads.length > 0 && (
+                <p className="text-sm text-gray-600">
+                  <span className="font-semibold text-orange-600">{streamingLeads.length}</span> leads found
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Streaming Complete Modal */}
+      {streamComplete && !isStreaming && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-2xl font-bold text-green-600">{streamComplete.total_leads}</span>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                {streamComplete.total_leads > 0 ? "New Leads Found!" : "Polling Complete"}
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                {streamComplete.total_leads > 0
+                  ? `Discovered ${streamComplete.total_leads} leads from ${streamComplete.total_posts_fetched} posts across ${streamComplete.subreddits_polled || 0} subreddits.`
+                  : `Scanned ${streamComplete.total_posts_fetched} posts but none were relevant enough.`}
+              </p>
+
+              {/* Relevancy distribution */}
+              {streamComplete.relevancy_distribution && streamComplete.total_leads > 0 && (
+                <div className="bg-gray-50 rounded-lg p-3 mb-4 text-left">
+                  <p className="text-xs font-medium text-gray-500 mb-2">By Relevancy Score</p>
+                  <div className="space-y-1">
+                    {Object.entries(streamComplete.relevancy_distribution)
+                      .filter(([, count]) => count > 0)
+                      .map(([tier, count]) => (
+                        <div key={tier} className="flex justify-between text-sm">
+                          <span className="text-gray-600">{tier}</span>
+                          <span className="font-medium text-gray-900">{count}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => setStreamComplete(null)}
+                className="w-full px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800"
+              >
+                View Leads
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Radar Modal */}
       {showDeleteModal && campaignToDelete && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1726,33 +2348,59 @@ export default function RedditPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
             <div className="p-6 text-center">
-              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 relative">
                 <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                 </svg>
+                {/* Pulsing ring animation */}
+                <span className="absolute inset-0 rounded-full bg-green-400 opacity-30 animate-ping" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Radar Activated</h3>
-              <p className="text-sm text-gray-600 mb-6">
-                Leads will appear after the polling cycle (every 6 hours).
+              <p className="text-sm text-gray-600 mb-2">
+                Your first scan is starting now!
+              </p>
+              <p className="text-xs text-gray-500 mb-6">
+                Leads will appear as they are discovered.
               </p>
               <button
-                onClick={() => {
+                onClick={async () => {
                   setShowSuccessDialog(false);
-                  setStep("campaigns");
                   setSelectedSubreddits(new Map());
+                  // Navigate into the campaign - handleViewLeads will fetch data and set step
+                  if (currentCampaign) {
+                    await handleViewLeads(currentCampaign);
+                  } else {
+                    setStep("campaigns");
+                  }
                 }}
-                className="px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800"
+                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
               >
-                OK
+                View Leads
               </button>
             </div>
           </div>
         </div>
       )}
-          </div>
-        </div>
       </DashboardLayout>
+
+      {/* Billing Dialog */}
+      <BillingDialog
+        isOpen={showBillingDialog}
+        onClose={() => setShowBillingDialog(false)}
+        user={currentUser}
+      />
     </ProtectedRoute>
   );
 }
 
+export default function RedditPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500"></div>
+      </div>
+    }>
+      <RedditPageContent />
+    </Suspense>
+  );
+}

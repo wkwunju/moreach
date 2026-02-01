@@ -35,13 +35,31 @@ class UsageType(str, enum.Enum):
     TEAM = "Team Use"
 
 
+class SubscriptionTier(str, enum.Enum):
+    FREE_TRIAL = "FREE_TRIAL"
+    # Legacy tiers (for backwards compatibility)
+    MONTHLY = "MONTHLY"
+    ANNUALLY = "ANNUALLY"
+    # New tiered plans
+    STARTER_MONTHLY = "STARTER_MONTHLY"
+    STARTER_ANNUALLY = "STARTER_ANNUALLY"
+    GROWTH_MONTHLY = "GROWTH_MONTHLY"
+    GROWTH_ANNUALLY = "GROWTH_ANNUALLY"
+    PRO_MONTHLY = "PRO_MONTHLY"
+    PRO_ANNUALLY = "PRO_ANNUALLY"
+    EXPIRED = "EXPIRED"
+
+
 class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String(256), unique=True, index=True)
-    hashed_password: Mapped[str] = mapped_column(String(256))
-    
+    hashed_password: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)  # Optional for OAuth users
+
+    # OAuth providers
+    google_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, unique=True, index=True)
+
     # Profile information
     full_name: Mapped[str] = mapped_column(String(256), default="")
     company: Mapped[str] = mapped_column(String(256), default="")
@@ -53,7 +71,17 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.USER)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
-    
+    profile_completed: Mapped[bool] = mapped_column(Boolean, default=False)  # For OAuth users to complete profile
+
+    # Subscription
+    subscription_tier: Mapped[SubscriptionTier] = mapped_column(Enum(SubscriptionTier), default=SubscriptionTier.FREE_TRIAL)
+    trial_ends_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # Set to created_at + 7 days
+    subscription_ends_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Stripe
+    stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, unique=True, index=True)
+    stripe_subscription_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, index=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -208,9 +236,8 @@ class RedditCampaignSubreddit(Base):
 
 
 class RedditLeadStatus(str, enum.Enum):
-    NEW = "NEW"  # Just discovered
-    REVIEWED = "REVIEWED"  # User reviewed
-    CONTACTED = "CONTACTED"  # User commented/DMed
+    NEW = "NEW"  # Just discovered (Inbox)
+    CONTACTED = "CONTACTED"  # User commented or DMed
     DISMISSED = "DISMISSED"  # User not interested
 
 
@@ -242,10 +269,14 @@ class RedditLead(Base):
     created_utc: Mapped[float] = mapped_column(Float)
     
     # AI analysis - 允许为空（待评分状态）
-    relevancy_score: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)  # 0-1, None表示未评分
+    relevancy_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)  # 0-1, None表示未评分
     relevancy_reason: Mapped[str] = mapped_column(Text, default="")
     suggested_comment: Mapped[str] = mapped_column(Text, default="")
     suggested_dm: Mapped[str] = mapped_column(Text, default="")
+
+    # Lazy suggestion generation tracking
+    has_suggestions: Mapped[bool] = mapped_column(Boolean, default=False)
+    suggestions_generated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     
     # Lead status
     status: Mapped[RedditLeadStatus] = mapped_column(

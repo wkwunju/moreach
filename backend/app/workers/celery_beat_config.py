@@ -8,22 +8,28 @@ from app.workers.celery_beat_config import CELERY_BEAT_SCHEDULE
 
 app = Celery(...)
 app.conf.beat_schedule = CELERY_BEAT_SCHEDULE
+
+Polling Schedule (based on subscription tier):
+- Starter plans: 2x/day at UTC 07:00 (Europe 8am CET) and 16:00 (US West 8am PST)
+- Growth/Pro plans: 4x/day at UTC 07:00, 11:00, 16:00, 22:00
+
+The task runs every hour and checks which users should be polled at that hour.
 """
 
 from celery.schedules import crontab
 
 CELERY_BEAT_SCHEDULE = {
-    # Poll Reddit every 6 hours
-    "poll-reddit-leads": {
-        "task": "app.workers.tasks.poll_reddit_leads",
-        "schedule": 3600 * 6,  # 6 hours in seconds
+    # Run the tier-based scheduled polling every hour
+    # The task will check which users should be polled based on their tier
+    "poll-reddit-scheduled": {
+        "task": "app.workers.tasks.poll_reddit_scheduled",
+        "schedule": crontab(minute=0),  # Every hour at :00
     },
-    
-    # Alternative: Use crontab for more control
-    # Run at 00:00, 06:00, 12:00, 18:00 every day
+
+    # Legacy: Poll all active (kept for backward compatibility, disabled by default)
     # "poll-reddit-leads": {
     #     "task": "app.workers.tasks.poll_reddit_leads",
-    #     "schedule": crontab(hour="*/6", minute=0),
+    #     "schedule": 3600 * 6,  # 6 hours in seconds
     # },
 }
 

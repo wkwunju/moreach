@@ -1,32 +1,72 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { getUser, logout, type User } from "@/lib/auth";
+import UserAvatar from "./UserAvatar";
+import BillingDialog from "./BillingDialog";
 
 export default function Navigation() {
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showComingSoon, setShowComingSoon] = useState(false);
   const [comingSoonPlatform, setComingSoonPlatform] = useState("");
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showBillingDialog, setShowBillingDialog] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Check if user is logged in
-    const userStr = localStorage.getItem("user");
-    if (userStr) {
-      try {
-        setUser(JSON.parse(userStr));
-      } catch (e) {
-        console.error("Failed to parse user data");
+    const checkUser = () => {
+      const userData = getUser();
+      setUser(userData);
+    };
+
+    // Initial check
+    checkUser();
+
+    // Listen for storage changes (login/logout from other tabs)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "user" || e.key === "token") {
+        checkUser();
       }
-    }
+    };
+
+    // Listen for custom auth events (login/logout from same tab)
+    const handleAuthChange = () => {
+      checkUser();
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("authChange", handleAuthChange);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("authChange", handleAuthChange);
+    };
   }, []);
 
+  // Close user menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+
+    if (showUserMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showUserMenu]);
+
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    logout();
     setUser(null);
     setShowUserMenu(false);
     router.push("/");
@@ -51,77 +91,93 @@ export default function Navigation() {
               moreach.ai
             </Link>
 
-            {/* Desktop Menu */}
-            <div className="hidden lg:flex items-center gap-8">
-              <Link href="/try" className="text-gray-700 hover:text-gray-900 transition font-medium">
-                Instagram
-              </Link>
-              <Link href="/reddit" className="text-gray-700 hover:text-gray-900 transition font-medium">
-                Reddit
-              </Link>
-              <button
-                onClick={() => handlePlatformClick("X (Twitter)")}
-                className="text-gray-700 hover:text-gray-900 transition font-medium"
-              >
-                Twitter
-              </button>
-              <button
-                onClick={() => handlePlatformClick("TikTok")}
-                className="text-gray-700 hover:text-gray-900 transition font-medium"
-              >
-                TikTok
-              </button>
-            </div>
 
             {/* CTA Buttons / User Menu */}
             <div className="hidden lg:flex items-center gap-3">
               {user ? (
-                <div className="relative">
+                <div className="relative" ref={userMenuRef}>
                   <button
                     onClick={() => setShowUserMenu(!showUserMenu)}
                     className="flex items-center gap-2 px-4 py-2.5 text-gray-700 hover:text-gray-900 transition font-medium rounded-full hover:bg-gray-100"
                   >
-                    <div className="w-8 h-8 bg-gray-900 text-white rounded-full flex items-center justify-center font-semibold">
-                      {user.full_name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase()}
-                    </div>
-                    <span>{user.full_name || user.email}</span>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <UserAvatar user={user} size="sm" />
+                    <span className="max-w-32 truncate">{user.full_name || user.email}</span>
+                    <svg className={`w-4 h-4 transition-transform ${showUserMenu ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  
+
                   {showUserMenu && (
-                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-200 py-2 z-50">
-                      <div className="px-4 py-3 border-b border-gray-200">
-                        <p className="text-sm font-semibold text-gray-900">{user.full_name}</p>
-                        <p className="text-xs text-gray-500">{user.email}</p>
+                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden z-50">
+                      {/* User Info Header */}
+                      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{user.full_name || "User"}</p>
+                        <p className="text-xs text-gray-500 truncate">{user.email}</p>
                       </div>
-                      <Link
-                        href="/reddit"
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                        onClick={() => setShowUserMenu(false)}
-                      >
-                        My Campaigns
-                      </Link>
-                      <button
-                        onClick={handleLogout}
-                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                      >
-                        Log out
-                      </button>
+
+                      {/* Menu Items */}
+                      <div className="py-1">
+                        <Link
+                          href="/reddit"
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                          onClick={() => setShowUserMenu(false)}
+                        >
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                          </svg>
+                          My Campaigns
+                        </Link>
+
+                        <button
+                          onClick={() => {
+                            setShowUserMenu(false);
+                            setShowBillingDialog(true);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                          </svg>
+                          Billing
+                        </button>
+
+                        <Link
+                          href="/settings"
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                          onClick={() => setShowUserMenu(false)}
+                        >
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          Settings
+                        </Link>
+
+                        <div className="border-t border-gray-100 my-1"></div>
+
+                        <button
+                          onClick={handleLogout}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                          </svg>
+                          Log out
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
               ) : (
                 <>
-                  <Link 
-                    href="/login" 
+                  <Link
+                    href="/login"
                     className="px-6 py-2.5 text-gray-700 hover:text-gray-900 transition font-medium rounded-full hover:bg-gray-100"
                   >
                     Log in
                   </Link>
-                  <Link 
-                    href="/register" 
+                  <Link
+                    href="/register"
                     className="px-6 py-2.5 bg-gray-900 text-white rounded-full hover:bg-gray-800 transition font-medium"
                   >
                     Sign up free
@@ -157,40 +213,40 @@ export default function Navigation() {
 
       {/* Mobile Menu Dropdown */}
       {isMenuOpen && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-40 w-80 lg:hidden animate-fade-in px-6">
-          <div className="bg-white rounded-3xl px-6 py-6 shadow-2xl">
-            <div className="space-y-4">
-              <Link href="/try" className="block text-gray-700 hover:text-gray-900 transition font-medium py-2">
-                Instagram
-              </Link>
-              <Link href="/reddit" className="block text-gray-700 hover:text-gray-900 transition font-medium py-2">
-                Reddit
-              </Link>
-              <button
-                onClick={() => handlePlatformClick("X (Twitter)")}
-                className="block w-full text-left text-gray-700 hover:text-gray-900 transition font-medium py-2"
-              >
-                Twitter
-              </button>
-              <button
-                onClick={() => handlePlatformClick("TikTok")}
-                className="block w-full text-left text-gray-700 hover:text-gray-900 transition font-medium py-2"
-              >
-                TikTok
-              </button>
-              <div className="pt-4 border-t border-gray-200 space-y-3">
+        <div className="fixed top-24 left-0 right-0 z-40 lg:hidden animate-fade-in px-6">
+          <div className="bg-white rounded-3xl px-6 py-6 shadow-2xl max-w-md mx-auto">
+            <div className="space-y-3">
                 {user ? (
                   <>
-                    <div className="px-4 py-3 bg-gray-50 rounded-xl">
-                      <p className="text-sm font-semibold text-gray-900">{user.full_name}</p>
-                      <p className="text-xs text-gray-500">{user.email}</p>
+                    <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-xl">
+                      <UserAvatar user={user} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{user.full_name || "User"}</p>
+                        <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                      </div>
                     </div>
-                    <Link 
-                      href="/reddit" 
+                    <Link
+                      href="/reddit"
                       className="block text-center py-3 text-gray-700 hover:text-gray-900 transition font-medium rounded-full hover:bg-gray-100"
                       onClick={() => setIsMenuOpen(false)}
                     >
                       My Campaigns
+                    </Link>
+                    <button
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        setShowBillingDialog(true);
+                      }}
+                      className="w-full text-center py-3 text-gray-700 hover:text-gray-900 transition font-medium rounded-full hover:bg-gray-100"
+                    >
+                      Billing
+                    </button>
+                    <Link
+                      href="/settings"
+                      className="block text-center py-3 text-gray-700 hover:text-gray-900 transition font-medium rounded-full hover:bg-gray-100"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Settings
                     </Link>
                     <button
                       onClick={() => {
@@ -204,21 +260,20 @@ export default function Navigation() {
                   </>
                 ) : (
                   <>
-                    <Link 
-                      href="/login" 
+                    <Link
+                      href="/login"
                       className="block text-center py-3 text-gray-700 hover:text-gray-900 transition font-medium rounded-full hover:bg-gray-100"
                     >
                       Log in
                     </Link>
-                    <Link 
-                      href="/register" 
+                    <Link
+                      href="/register"
                       className="block text-center py-3 bg-gray-900 text-white rounded-full hover:bg-gray-800 transition font-medium"
                     >
                       Sign up free
                     </Link>
                   </>
                 )}
-              </div>
             </div>
           </div>
         </div>
@@ -235,7 +290,13 @@ export default function Navigation() {
           </div>
         </div>
       )}
+
+      {/* Billing Dialog */}
+      <BillingDialog
+        isOpen={showBillingDialog}
+        onClose={() => setShowBillingDialog(false)}
+        user={user}
+      />
     </>
   );
 }
-

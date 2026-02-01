@@ -10,7 +10,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
 
   useEffect(() => {
     if (!isAuthenticated()) {
-      router.push("/login");
+      router.replace("/login");  // Use replace to avoid back-button loop
     } else {
       setIsLoading(false);
     }

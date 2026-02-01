@@ -23,6 +23,10 @@ class UserLogin(BaseModel):
     password: str
 
 
+class GoogleAuthRequest(BaseModel):
+    id_token: str = Field(..., description="Google ID token from Sign In With Google")
+
+
 class UserResponse(BaseModel):
     id: int
     email: str
@@ -34,7 +38,20 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     email_verified: bool
+    profile_completed: bool
+    subscription_tier: str
+    trial_ends_at: Optional[datetime]
+    subscription_ends_at: Optional[datetime]
     created_at: datetime
+
+
+class ProfileUpdate(BaseModel):
+    """Schema for completing user profile after OAuth login"""
+    full_name: str = Field(..., min_length=1, description="Full name is required")
+    company: str = ""
+    job_title: str = ""
+    industry: IndustryType
+    usage_type: UsageType
 
 
 class TokenResponse(BaseModel):
@@ -123,7 +140,7 @@ class RedditCampaignResponse(BaseModel):
     business_description: str
     search_queries: str
     poll_interval_hours: int
-    last_poll_at: datetime | None
+    last_poll_at: Optional[datetime]
     created_at: datetime
     subreddits_count: int = 0
     leads_count: int = 0
@@ -151,7 +168,7 @@ class RedditLeadResponse(BaseModel):
     score: int
     num_comments: int
     created_utc: float
-    relevancy_score: float | None  # 允许为空（待评分状态）
+    relevancy_score: Optional[float]  # 允许为空（待评分状态）
     relevancy_reason: str
     suggested_comment: str
     suggested_dm: str
@@ -160,13 +177,12 @@ class RedditLeadResponse(BaseModel):
 
 
 class RedditLeadUpdateStatus(BaseModel):
-    status: str  # "REVIEWED", "CONTACTED", "DISMISSED"
+    status: str  # "NEW", "CONTACTED", "DISMISSED"
 
 
 class RedditCampaignLeadsResponse(BaseModel):
     campaign_id: int
     total_leads: int
     new_leads: int
-    reviewed_leads: int  # REVIEWED (Commented)
-    contacted_leads: int  # CONTACTED (DMed)
+    contacted_leads: int
     leads: List[RedditLeadResponse]

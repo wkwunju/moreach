@@ -1,3 +1,6 @@
+import os
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,7 +13,16 @@ from app.models import tables  # noqa: F401
 
 
 setup_logging()
-Base.metadata.create_all(bind=engine)
+logger = logging.getLogger(__name__)
+
+# Database initialization strategy:
+# - USE_ALEMBIC=true: Skip create_all, rely on Alembic migrations (production)
+# - USE_ALEMBIC=false or not set: Use create_all (local development)
+if os.getenv("USE_ALEMBIC", "false").lower() == "true":
+    logger.info("USE_ALEMBIC=true, skipping create_all(). Run 'alembic upgrade head' to apply migrations.")
+else:
+    logger.info("Using create_all() for database initialization (set USE_ALEMBIC=true for Alembic)")
+    Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title=settings.app_name)
 

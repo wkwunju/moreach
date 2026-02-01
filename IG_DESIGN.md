@@ -1,179 +1,179 @@
-# Instagram 影响者发现 - 完整设计文档
+# Instagram Influencer Discovery - Complete Design Document
 
-> **AI 驱动的 Instagram 影响者发现系统**
-> 
-> 通过 Google 搜索和 Instagram 抓取，自动发现、分析和推荐相关影响者
-
----
-
-## 📖 目录
-
-1. [系统概述](#系统概述)
-2. [核心流程](#核心流程)
-3. [技术架构](#技术架构)
-4. [数据模型](#数据模型)
-5. [数据同步策略](#数据同步策略)
-6. [前端设计](#前端设计)
-7. [后端服务](#后端服务)
-8. [API 参考](#api-参考)
-9. [配置说明](#配置说明)
-10. [使用指南](#使用指南)
-11. [最佳实践](#最佳实践)
+> **AI-Powered Instagram Influencer Discovery System**
+>
+> Automatically discover, analyze, and recommend relevant influencers through Google Search and Instagram scraping
 
 ---
 
-## 系统概述
+## Table of Contents
 
-### 核心功能
-
-**Instagram Influencer Discovery** 是一个智能化的影响者发现系统，通过 AI 技术自动从 Instagram 发现和分析符合品牌需求的影响者。
-
-#### 主要特性
-
-1. **智能意图分析**
-   - LLM 解析用户需求
-   - 提取行业、地点、约束条件
-   - 生成优化的搜索策略
-
-2. **Google Dork 搜索**
-   - AI 生成精准搜索查询
-   - 自动查找 Instagram profiles
-   - 返回候选人列表
-
-3. **Instagram 数据抓取**
-   - 使用 Apify 抓取 profile 数据
-   - 获取最近的帖子和互动数据
-   - 提取联系信息
-
-4. **AI 深度分析**
-   - Profile Summary（博主概况）
-   - Audience Analysis（受众分析）
-   - Collaboration Opportunities（合作机会）
-   - 自动分类和打标签
-
-5. **向量化搜索**
-   - 基于语义的相似度搜索
-   - Pinecone 向量数据库
-   - 智能排序和推荐
-
-6. **数据持久化**
-   - SQLite 作为单一数据源
-   - Pinecone 作为搜索索引
-   - 智能同步机制
-
-### 使用场景
-
-- **品牌营销**: 寻找符合品牌调性的影响者
-- **产品推广**: 找到目标受众匹配的创作者
-- **市场调研**: 了解行业内的关键意见领袖
-- **竞品分析**: 研究竞争对手合作的影响者
+1. [System Overview](#system-overview)
+2. [Core Workflow](#core-workflow)
+3. [Technical Architecture](#technical-architecture)
+4. [Data Model](#data-model)
+5. [Data Sync Strategy](#data-sync-strategy)
+6. [Frontend Design](#frontend-design)
+7. [Backend Services](#backend-services)
+8. [API Reference](#api-reference)
+9. [Configuration](#configuration)
+10. [Usage Guide](#usage-guide)
+11. [Best Practices](#best-practices)
 
 ---
 
-## 核心流程
+## System Overview
 
-### 完整工作流
+### Core Features
+
+**Instagram Influencer Discovery** is an intelligent influencer discovery system that automatically finds and analyzes influencers matching brand requirements using AI technology.
+
+#### Main Features
+
+1. **Intelligent Intent Analysis**
+   - LLM parses user requirements
+   - Extracts industry, location, and constraints
+   - Generates optimized search strategies
+
+2. **Google Dork Search**
+   - AI generates precise search queries
+   - Automatically finds Instagram profiles
+   - Returns candidate list
+
+3. **Instagram Data Scraping**
+   - Uses Apify to scrape profile data
+   - Retrieves recent posts and engagement data
+   - Extracts contact information
+
+4. **AI Deep Analysis**
+   - Profile Summary (influencer overview)
+   - Audience Analysis
+   - Collaboration Opportunities
+   - Automatic categorization and tagging
+
+5. **Vector Search**
+   - Semantic similarity-based search
+   - Pinecone vector database
+   - Intelligent ranking and recommendations
+
+6. **Data Persistence**
+   - SQLite as single source of truth
+   - Pinecone as search index
+   - Intelligent sync mechanism
+
+### Use Cases
+
+- **Brand Marketing**: Find influencers matching brand identity
+- **Product Promotion**: Find creators with matching target audiences
+- **Market Research**: Understand key opinion leaders in the industry
+- **Competitive Analysis**: Research influencers collaborating with competitors
+
+---
+
+## Core Workflow
+
+### Complete Workflow
 
 ```
-1. 用户输入描述
+1. User Input Description
    "fitness influencers in Singapore"
    ↓
 2. Intent Analysis (LLM)
-   提取：行业=fitness, 地点=Singapore, 约束=[]
+   Extract: industry=fitness, location=Singapore, constraints=[]
    ↓
 3. Google Dork Generation (LLM)
-   生成："site:instagram.com fitness Singapore"
+   Generate: "site:instagram.com fitness Singapore"
    ↓
 4. Google Search (Apify)
-   返回：30-50 个 Instagram profile URLs
+   Return: 30-50 Instagram profile URLs
    ↓
 5. Instagram Scraping (Apify)
-   抓取每个 profile：
-   - 基础信息（followers, bio, etc.）
-   - 最近 12 个帖子
-   - 互动数据（likes, comments, views）
+   Scrape each profile:
+   - Basic info (followers, bio, etc.)
+   - Latest 12 posts
+   - Engagement data (likes, comments, views)
    ↓
-6. LLM Analysis (并行处理)
-   对每个 profile：
+6. LLM Analysis (parallel processing)
+   For each profile:
    - Profile Summary
    - Audience Analysis
    - Collaboration Opportunities
    - Category & Tags
    ↓
-7. Save to SQLite (单一数据源)
-   存储完整数据到数据库
+7. Save to SQLite (single source of truth)
+   Store complete data to database
    ↓
 8. Vectorize & Upsert to Pinecone
-   - 将 profile_summary 转为向量
-   - 存储到 Pinecone（仅用于搜索）
+   - Convert profile_summary to vector
+   - Store in Pinecone (search only)
    ↓
 9. Vector Search
-   基于用户描述查找相似 profiles
-   返回：handles + scores
+   Find similar profiles based on user description
+   Return: handles + scores
    ↓
 10. Fetch from SQLite
-    通过 handles 获取完整数据
+    Get complete data via handles
     ↓
 11. Return Results
-    按相关性排序返回给前端
+    Return to frontend sorted by relevance
 ```
 
-### 数据流优化
+### Data Flow Optimization
 
-#### 核心原则：SQLite 为主，Pinecone 为辅
+#### Core Principle: SQLite Primary, Pinecone Secondary
 
 ```
 SQLite (Single Source of Truth)
-   ↓ 单向同步
+   ↓ One-way sync
 Pinecone (Search Index Only)
-   ↓ 返回 handle + score
-SQLite (查询完整数据)
+   ↓ Returns handle + score
+SQLite (Query complete data)
    ↓
-返回给前端
+Return to frontend
 ```
 
-**关键点**：
-- ✅ SQLite 是唯一的数据源
-- ✅ Pinecone 只用于向量搜索
-- ✅ 所有数据写入先到 SQLite
-- ✅ 所有数据读取从 SQLite
-- ❌ 永远不要从 Pinecone metadata 创建/更新数据
+**Key Points**:
+- SQLite is the only data source
+- Pinecone is only used for vector search
+- All data writes go to SQLite first
+- All data reads come from SQLite
+- Never create/update data from Pinecone metadata
 
 ---
 
-## 技术架构
+## Technical Architecture
 
-### 技术栈
+### Tech Stack
 
-**后端**:
-- FastAPI 0.115.0 (API 服务器)
+**Backend**:
+- FastAPI 0.115.0 (API server)
 - SQLAlchemy 2.0.34 (ORM)
-- SQLite (数据库)
-- Celery 5.4.0 (异步任务)
-- Redis 5.0.8 (任务队列)
+- SQLite (database)
+- Celery 5.4.0 (async tasks)
+- Redis 5.0.8 (task queue)
 
-**前端**:
-- Next.js 14 (React 框架)
+**Frontend**:
+- Next.js 14 (React framework)
 - TypeScript
 - Tailwind CSS
 
-**外部服务**:
-- **Apify**: 数据抓取
+**External Services**:
+- **Apify**: Data scraping
   - Google Search Actor
   - Instagram Profile Scraper
-- **Pinecone**: 向量搜索
-  - Inference API (内置 embedding)
-- **Gemini/OpenAI**: LLM 服务
-  - 意图分析
-  - 内容生成
-  - 分类标签
+- **Pinecone**: Vector search
+  - Inference API (built-in embedding)
+- **Gemini/OpenAI**: LLM services
+  - Intent analysis
+  - Content generation
+  - Category tagging
 
-**LangChain 集成** (可选):
-- 统一的 LLM chains
-- Prompt 模板化管理
-- 可通过配置开关启用
+**LangChain Integration** (optional):
+- Unified LLM chains
+- Prompt template management
+- Can be enabled via configuration
 
-### 系统架构图
+### System Architecture Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -214,19 +214,19 @@ SQLite (查询完整数据)
 └──────────────┘ └───────────┘ └─────────────┘ └─────────┘
 ```
 
-### 并发处理
+### Concurrent Processing
 
 ```
 Pipeline Run
     ↓
 ┌───┴────────────────────────────────┐
-│ 发现阶段（串行）                    │
+│ Discovery Phase (sequential)        │
 │ 1. Google Search                    │
 │ 2. Instagram Scraping               │
 └────┬───────────────────────────────┘
      │
 ┌────▼───────────────────────────────┐
-│ 分析阶段（并行）                    │
+│ Analysis Phase (parallel)           │
 │ Profile 1 → LLM Analysis            │
 │ Profile 2 → LLM Analysis            │
 │ Profile 3 → LLM Analysis            │
@@ -234,13 +234,13 @@ Pipeline Run
 └────┬───────────────────────────────┘
      │
 ┌────▼───────────────────────────────┐
-│ 存储阶段（批量）                    │
+│ Storage Phase (batch)               │
 │ 1. Batch save to SQLite             │
 │ 2. Batch upsert to Pinecone         │
 └────┬───────────────────────────────┘
      │
 ┌────▼───────────────────────────────┐
-│ 搜索阶段                            │
+│ Search Phase                        │
 │ 1. Vector search                    │
 │ 2. Fetch from SQLite                │
 │ 3. Rank & return                    │
@@ -249,11 +249,11 @@ Pipeline Run
 
 ---
 
-## 数据模型
+## Data Model
 
-### 数据库表结构
+### Database Table Structure
 
-#### 1. `influencers` - 影响者主表
+#### 1. `influencers` - Influencer Main Table
 
 ```sql
 CREATE TABLE influencers (
@@ -261,34 +261,34 @@ CREATE TABLE influencers (
     handle TEXT UNIQUE NOT NULL,           -- Instagram handle (@username)
     name TEXT,
     bio TEXT,
-    profile_summary TEXT,                  -- LLM 生成的概况
-    category TEXT,                         -- 分类
-    tags TEXT,                             -- 标签（JSON array）
-    
-    -- 基础指标
+    profile_summary TEXT,                  -- LLM-generated summary
+    category TEXT,                         -- Category
+    tags TEXT,                             -- Tags (JSON array)
+
+    -- Basic metrics
     followers FLOAT,
     avg_likes FLOAT,
     avg_comments FLOAT,
     avg_video_views FLOAT,
-    
-    -- 峰值指标
+
+    -- Peak metrics
     highest_likes FLOAT,
     highest_comments FLOAT,
     highest_video_views FLOAT,
-    
-    -- 帖子分析
-    post_sharing_percentage FLOAT,         -- 分享帖子占比
-    post_collaboration_percentage FLOAT,   -- 合作帖子占比
-    
-    -- LLM 分析结果
-    audience_analysis TEXT,                -- 受众分析
-    collaboration_opportunity TEXT,        -- 合作机会
-    
-    -- 联系信息
+
+    -- Post analysis
+    post_sharing_percentage FLOAT,         -- Sharing post percentage
+    post_collaboration_percentage FLOAT,   -- Collaboration post percentage
+
+    -- LLM analysis results
+    audience_analysis TEXT,                -- Audience analysis
+    collaboration_opportunity TEXT,        -- Collaboration opportunities
+
+    -- Contact information
     email TEXT,
     external_url TEXT,
-    
-    -- 元数据
+
+    -- Metadata
     platform TEXT DEFAULT 'instagram',
     country TEXT,
     gender TEXT,
@@ -302,34 +302,34 @@ CREATE INDEX idx_influencers_category ON influencers(category);
 CREATE INDEX idx_influencers_followers ON influencers(followers);
 ```
 
-#### 2. `requests` - 搜索请求表
+#### 2. `requests` - Search Request Table
 
 ```sql
 CREATE TABLE requests (
     id INTEGER PRIMARY KEY,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     status TEXT NOT NULL,                  -- PARTIAL, PROCESSING, DONE, FAILED
-    description TEXT NOT NULL,             -- 用户输入描述
-    constraints TEXT,                      -- 约束条件
-    intent TEXT,                           -- LLM 解析的意图
-    query_embedding TEXT                   -- 查询向量（用于搜索）
+    description TEXT NOT NULL,             -- User input description
+    constraints TEXT,                      -- Constraints
+    intent TEXT,                           -- LLM-parsed intent
+    query_embedding TEXT                   -- Query vector (for search)
 );
 
 CREATE INDEX idx_requests_status ON requests(status);
 CREATE INDEX idx_requests_created_at ON requests(created_at);
 ```
 
-#### 3. `request_results` - 搜索结果关联表
+#### 3. `request_results` - Search Result Association Table
 
 ```sql
 CREATE TABLE request_results (
     id INTEGER PRIMARY KEY,
     request_id INTEGER NOT NULL,
     influencer_id INTEGER NOT NULL,
-    score FLOAT,                           -- 来自 Pinecone 的相似度分数
-    rank INTEGER,                          -- 排名
+    score FLOAT,                           -- Similarity score from Pinecone
+    rank INTEGER,                          -- Ranking
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    
+
     FOREIGN KEY (request_id) REFERENCES requests(id) ON DELETE CASCADE,
     FOREIGN KEY (influencer_id) REFERENCES influencers(id) ON DELETE CASCADE
 );
@@ -338,22 +338,22 @@ CREATE INDEX idx_request_results_request_id ON request_results(request_id);
 CREATE INDEX idx_request_results_score ON request_results(score);
 ```
 
-### 状态枚举
+### Status Enums
 
-#### Request 状态
+#### Request Status
 
-- `PARTIAL` - 创建但未开始处理
-- `PROCESSING` - 正在处理中
-- `DONE` - 完成
-- `FAILED` - 失败
+- `PARTIAL` - Created but not started processing
+- `PROCESSING` - Currently processing
+- `DONE` - Completed
+- `FAILED` - Failed
 
-### Pinecone 向量结构
+### Pinecone Vector Structure
 
 ```python
-# Pinecone 中存储的向量记录
+# Vector record stored in Pinecone
 {
-    "id": "instagram_username",           # 使用 handle 作为 ID
-    "values": [0.1, 0.2, ...],           # 向量（由 Pinecone Inference 生成）
+    "id": "instagram_username",           # Use handle as ID
+    "values": [0.1, 0.2, ...],           # Vector (generated by Pinecone Inference)
     "metadata": {
         "handle": "username",
         "platform": "instagram",
@@ -363,34 +363,34 @@ CREATE INDEX idx_request_results_score ON request_results(score);
 }
 ```
 
-**重要**：metadata 仅用于过滤和返回基本信息，不用于创建/更新数据库记录。
+**Important**: metadata is only used for filtering and returning basic info, not for creating/updating database records.
 
 ---
 
-## 数据同步策略
+## Data Sync Strategy
 
-### 核心原则
+### Core Principles
 
-**SQLite 是唯一真相源 (Single Source of Truth)**
+**SQLite is the Single Source of Truth**
 
-1. ✅ 所有数据先写入 SQLite
-2. ✅ 再同步到 Pinecone（仅用于搜索）
-3. ✅ 搜索时从 Pinecone 获取 handles + scores
-4. ✅ 再从 SQLite 查询完整数据
-5. ❌ 永远不要从 Pinecone 创建/更新 Influencer
+1. All data is written to SQLite first
+2. Then synced to Pinecone (for search only)
+3. During search, get handles + scores from Pinecone
+4. Then query complete data from SQLite
+5. Never create/update Influencer from Pinecone
 
-### 数据流
+### Data Flow
 
-#### 写入流程
+#### Write Flow
 
 ```python
 def save_and_sync(candidate_data):
-    # Step 1: 保存到 SQLite（主数据源）
+    # Step 1: Save to SQLite (primary data source)
     influencer = Influencer(**candidate_data)
     db.add(influencer)
     db.commit()
-    
-    # Step 2: 同步到 Pinecone（搜索索引）
+
+    # Step 2: Sync to Pinecone (search index)
     vector_store.upsert_texts(
         texts=[influencer.profile_summary],
         ids=[f"instagram_{influencer.handle}"],
@@ -401,30 +401,30 @@ def save_and_sync(candidate_data):
             "category": influencer.category
         }]
     )
-    
+
     return influencer
 ```
 
-#### 搜索流程
+#### Search Flow
 
 ```python
 def search_and_fetch(query: str, top_k: int = 20):
-    # Step 1: 向量搜索（Pinecone）
+    # Step 1: Vector search (Pinecone)
     matches = vector_store.search_text(query, top_k=top_k)
     # matches = [
     #     {"id": "instagram_user1", "score": 0.95, "metadata": {...}},
     #     {"id": "instagram_user2", "score": 0.89, "metadata": {...}}
     # ]
-    
-    # Step 2: 提取 handles
+
+    # Step 2: Extract handles
     handles = [m["metadata"]["handle"] for m in matches]
-    
-    # Step 3: 从 SQLite 查询完整数据
+
+    # Step 3: Query complete data from SQLite
     influencers = db.query(Influencer).filter(
         Influencer.handle.in_(handles)
     ).all()
-    
-    # Step 4: 合并 score 并排序
+
+    # Step 4: Merge scores and sort
     handle_to_influencer = {inf.handle: inf for inf in influencers}
     results = []
     for match in matches:
@@ -435,135 +435,135 @@ def search_and_fetch(query: str, top_k: int = 20):
                 "influencer": influencer,
                 "score": match["score"]
             })
-    
+
     return results
 ```
 
-#### 存储结果流程
+#### Store Results Flow
 
 ```python
 def store_results(request_id: int, matches: List[Dict]):
     """
-    只存储引用关系，不创建新的 Influencer
+    Only store reference relationships, don't create new Influencers
     """
     for rank, match in enumerate(matches, 1):
         handle = match["metadata"]["handle"]
-        
-        # 从 SQLite 查找 Influencer
+
+        # Find Influencer from SQLite
         influencer = db.query(Influencer).filter(
             Influencer.handle == handle
         ).first()
-        
+
         if not influencer:
-            # ❌ 不要创建！只记录警告
+            # DON'T create! Only log warning
             logger.warning(
                 f"Influencer @{handle} found in Pinecone but not in SQLite. "
                 "Data inconsistency detected. Skipping."
             )
             continue
-        
-        # ✅ 只存储引用
+
+        # Only store reference
         result = RequestResult(
             request_id=request_id,
-            influencer_id=influencer.id,  # 来自 SQLite
-            score=match.get("score"),      # 来自 Pinecone
+            influencer_id=influencer.id,  # From SQLite
+            score=match.get("score"),      # From Pinecone
             rank=rank
         )
         db.add(result)
-    
+
     db.commit()
 ```
 
-### 历史问题与解决
+### Historical Issues and Solutions
 
-#### 问题 1：数据不一致
+#### Issue 1: Data Inconsistency
 
-**场景 A**:
+**Scenario A**:
 ```
-1. Pipeline 发现新博主 → 存入 SQLite ✅
-2. Pipeline 向量化 → 存入 Pinecone ✅
-3. 后来手动更新 SQLite 中的数据
-   ❌ Pinecone 没有更新 → 不一致
-```
-
-**场景 B**:
-```
-1. Pinecone 中有旧数据
-2. SQLite 中是空的或旧的
-3. 搜索时从 Pinecone 返回
-   ❌ SQLite 中找不到或数据不完整
+1. Pipeline discovers new influencer → Store in SQLite
+2. Pipeline vectorizes → Store in Pinecone
+3. Later manually update data in SQLite
+   Pinecone not updated → Inconsistency
 ```
 
-#### 问题 2：职责不清晰
+**Scenario B**:
+```
+1. Pinecone has old data
+2. SQLite is empty or outdated
+3. Search returns from Pinecone
+   Can't find or incomplete data in SQLite
+```
+
+#### Issue 2: Unclear Responsibilities
 
 ```
-❌ Pinecone 既是搜索引擎，又是数据源
-❌ SQLite 既是数据库，又依赖 Pinecone 补充
+Pinecone is both search engine and data source
+SQLite is both database and depends on Pinecone for supplementation
 ```
 
-#### 解决方案
+#### Solution
 
-**1. 修改 `_store_results` 方法**
+**1. Modify `_store_results` Method**
 
-之前（错误）：
+Before (wrong):
 ```python
 if not influencer:
-    # 从 Pinecone metadata 创建 Influencer ❌
+    # Create Influencer from Pinecone metadata (WRONG)
     influencer = Influencer(
         profile_summary=meta.get("profile_summary"),
         ...
     )
 ```
 
-现在（正确）：
+Now (correct):
 ```python
 if not influencer:
-    # 不创建！只记录警告 ✅
+    # Don't create! Only log warning (CORRECT)
     logger.warning(
         f"Influencer @{handle} found in Pinecone but not in SQLite. "
         "Data inconsistency detected. Skipping."
     )
     continue
 
-# 只存储引用（handle -> score mapping）
+# Only store reference (handle -> score mapping)
 result = RequestResult(
     request_id=request.id,
-    influencer_id=influencer.id,  # 来自 SQLite
-    score=match.get("score"),      # 来自 Pinecone
+    influencer_id=influencer.id,  # From SQLite
+    score=match.get("score"),      # From Pinecone
     rank=rank,
 )
 ```
 
-**2. Pipeline 确保先写 SQLite**
+**2. Pipeline Ensures Writing to SQLite First**
 
 ```python
 def run(self, description: str, constraints: str):
-    # 1️⃣ 发现候选者
+    # 1. Discover candidates
     candidates = self._discover(...)
-    
-    # 2️⃣ 先存入 SQLite（单一真相源）
+
+    # 2. First save to SQLite (single source of truth)
     for candidate in candidates:
         influencer = self._save_to_database(db, candidate)
-    
-    # 3️⃣ 再同步到 Pinecone
+
+    # 3. Then sync to Pinecone
     self._upsert_vectors(candidates)
-    
-    # 4️⃣ 搜索只返回 handle + score
+
+    # 4. Search only returns handle + score
     matches = self.vector_store.search_text(query, top_k=20)
-    
-    # 5️⃣ 存储结果引用
+
+    # 5. Store result references
     self._store_results(db, request, matches)
 ```
 
-**3. 数据更新策略**
+**3. Data Update Strategy**
 
-如果需要更新数据，必须同时更新：
+When updating data, must update both:
 ```python
-# 1. 更新 SQLite
+# 1. Update SQLite
 influencer.profile_summary = new_summary
 db.commit()
 
-# 2. 更新 Pinecone
+# 2. Update Pinecone
 vector_store.upsert_texts(
     texts=[new_summary],
     ids=[f"instagram_{influencer.handle}"],
@@ -571,26 +571,26 @@ vector_store.upsert_texts(
 )
 ```
 
-### 数据一致性检查
+### Data Consistency Checks
 
-提供工具脚本检查同步状态：
+Provide utility scripts to check sync status:
 
 ```bash
-# 检查 SQLite 中有但 Pinecone 没有的
+# Check records in SQLite but not in Pinecone
 python scripts/sync_sqlite_to_pinecone.py
 
-# 检查 Pinecone 中有但 SQLite 没有的
+# Check records in Pinecone but not in SQLite
 python scripts/sync_pinecone_to_sqlite.py
 
-# 对比并同步
+# Compare and sync
 python scripts/sync_all.py
 ```
 
 ---
 
-## 前端设计
+## Frontend Design
 
-### UI 布局
+### UI Layout
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -600,11 +600,11 @@ python scripts/sync_all.py
 │  ┌────────────────────────────────────────────────────────┐   │
 │  │  Search Section                                         │   │
 │  │  ┌──────────────────────────────────────────────────┐ │   │
-│  │  │ 描述你的需求...                                  │ │   │
+│  │  │ Describe your needs...                           │ │   │
 │  │  │ "fitness influencers in Singapore"               │ │   │
 │  │  └──────────────────────────────────────────────────┘ │   │
 │  │  ┌──────────────────────────────────────────────────┐ │   │
-│  │  │ 约束条件（可选）...                              │ │   │
+│  │  │ Constraints (optional)...                        │ │   │
 │  │  │ "must have > 10k followers"                      │ │   │
 │  │  └──────────────────────────────────────────────────┘ │   │
 │  │  [Search]                                             │   │
@@ -631,22 +631,22 @@ python scripts/sync_all.py
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│  @username                                        [✕]           │
+│  @username                                        [X]           │
 ├────────────────────────────────────────────────────────────────┤
 │  ┌────────┐  Name: John Doe                                    │
 │  │        │  Followers: 50,000                                 │
 │  │ Avatar │  Avg Likes: 2,500                                  │
 │  │        │  Category: Fitness                                 │
-│  └────────┘  📧 email@example.com                              │
-│              🔗 website.com                                     │
+│  └────────┘  Email: email@example.com                          │
+│              Website: website.com                               │
 ├────────────────────────────────────────────────────────────────┤
-│  📝 Profile Summary                                            │
+│  Profile Summary                                                │
 │  A fitness coach based in Singapore...                         │
 │                                                                  │
-│  👥 Audience Analysis                                          │
+│  Audience Analysis                                              │
 │  Primary audience: 25-35 year old professionals...            │
 │                                                                  │
-│  🤝 Collaboration Opportunities                                │
+│  Collaboration Opportunities                                    │
 │  - Product reviews                                              │
 │  - Sponsored posts                                              │
 │  - Long-term ambassador                                         │
@@ -655,156 +655,156 @@ python scripts/sync_all.py
 └────────────────────────────────────────────────────────────────┘
 ```
 
-### 响应式设计
+### Responsive Design
 
-- **桌面**: 3列网格，详细展示
-- **平板**: 2列网格
-- **手机**: 单列列表，卡片式展示
+- **Desktop**: 3-column grid, detailed display
+- **Tablet**: 2-column grid
+- **Mobile**: Single-column list, card-style display
 
 ---
 
-## 后端服务
+## Backend Services
 
-### 1. Discovery Manager (发现管理器)
+### 1. Discovery Manager
 
-**职责**: 协调整个发现流程
+**Responsibility**: Coordinate the entire discovery process
 
-**核心方法**:
+**Core Methods**:
 
 ```python
 class DiscoveryManager:
     def create_request(
-        self, 
-        description: str, 
+        self,
+        description: str,
         constraints: str = None
     ) -> Request:
         """
-        创建新的搜索请求
-        
-        流程:
-        1. 创建 Request 记录（status=PARTIAL）
-        2. 触发异步任务
-        3. 返回 Request ID
+        Create a new search request
+
+        Flow:
+        1. Create Request record (status=PARTIAL)
+        2. Trigger async task
+        3. Return Request ID
         """
-    
+
     def get_request(self, request_id: int) -> Request:
         """
-        获取请求状态
-        
-        返回:
+        Get request status
+
+        Returns:
         - status: PARTIAL/PROCESSING/DONE/FAILED
         - created_at
-        - intent（如果已解析）
+        - intent (if parsed)
         """
-    
+
     def get_results(
-        self, 
+        self,
         request_id: int,
         limit: int = 20,
         offset: int = 0
     ) -> List[Dict]:
         """
-        获取搜索结果
-        
-        流程:
-        1. 查询 request_results 表
-        2. JOIN influencers 表
-        3. 按 score 降序排序
-        4. 分页返回
-        
-        返回:
+        Get search results
+
+        Flow:
+        1. Query request_results table
+        2. JOIN influencers table
+        3. Sort by score descending
+        4. Return with pagination
+
+        Returns:
         [{
-            "influencer": {...},  # 完整数据
-            "score": 0.95,        # 相似度
+            "influencer": {...},  # Complete data
+            "score": 0.95,        # Similarity
             "rank": 1
         }]
         """
 ```
 
-### 2. Discovery Pipeline (发现流程)
+### 2. Discovery Pipeline
 
-**职责**: 执行发现和分析流程
+**Responsibility**: Execute discovery and analysis flow
 
-**核心方法**:
+**Core Methods**:
 
 ```python
 class DiscoveryPipeline:
     def run(
-        self, 
+        self,
         request_id: int,
         description: str,
         constraints: str = None
     ):
         """
-        完整的发现流程
-        
-        步骤:
+        Complete discovery flow
+
+        Steps:
         1. Intent Analysis
         2. Google Dork Generation
         3. Google Search
         4. Instagram Scraping
-        5. LLM Analysis (并行)
+        5. LLM Analysis (parallel)
         6. Save to SQLite
         7. Upsert to Pinecone
         8. Vector Search
         9. Store Results
         """
-    
+
     def _discover(self, intent: Dict) -> List[Dict]:
         """
-        发现阶段
-        
-        流程:
-        1. 生成 Google Dork
-        2. 执行 Google 搜索
-        3. 抓取 Instagram profiles
-        
-        返回: 候选人列表
+        Discovery phase
+
+        Flow:
+        1. Generate Google Dork
+        2. Execute Google search
+        3. Scrape Instagram profiles
+
+        Returns: Candidate list
         """
-    
+
     def _analyze(self, candidates: List[Dict]) -> List[Dict]:
         """
-        分析阶段
-        
-        并行处理每个候选人:
+        Analysis phase
+
+        Parallel processing for each candidate:
         1. Profile Summary
         2. Audience Analysis
         3. Collaboration Opportunities
         4. Category & Tags
-        
-        返回: 带分析结果的候选人列表
+
+        Returns: Candidate list with analysis results
         """
-    
+
     def _save_to_database(
-        self, 
-        db: Session, 
+        self,
+        db: Session,
         candidate: Dict
     ) -> Influencer:
         """
-        保存到 SQLite
-        
-        处理:
-        - 去重（基于 handle）
-        - 如果存在则更新
-        - 如果不存在则创建
+        Save to SQLite
+
+        Handling:
+        - Deduplication (based on handle)
+        - Update if exists
+        - Create if not exists
         """
-    
+
     def _upsert_vectors(self, candidates: List[Dict]):
         """
-        同步到 Pinecone
-        
-        批量上传:
+        Sync to Pinecone
+
+        Batch upload:
         - texts: profile_summary
         - ids: instagram_handle
-        - metadatas: 基本信息
+        - metadatas: Basic info
         """
 ```
 
-### 3. Search Service (搜索服务)
+### 3. Search Service
 
-**职责**: 向量搜索和排序
+**Responsibility**: Vector search and ranking
 
-**核心方法**:
+**Core Methods**:
 
 ```python
 class SearchService:
@@ -815,16 +815,16 @@ class SearchService:
         filters: Dict = None
     ) -> List[Dict]:
         """
-        语义搜索
-        
-        流程:
-        1. 向量搜索（Pinecone）
-        2. 应用过滤器（category, followers 等）
-        3. 从 SQLite 获取完整数据
-        4. 合并 score
-        5. 排序返回
-        
-        返回:
+        Semantic search
+
+        Flow:
+        1. Vector search (Pinecone)
+        2. Apply filters (category, followers, etc.)
+        3. Get complete data from SQLite
+        4. Merge scores
+        5. Sort and return
+
+        Returns:
         [{
             "influencer": Influencer object,
             "score": 0.95
@@ -832,18 +832,18 @@ class SearchService:
         """
 ```
 
-### 4. LLM Services (LLM 服务)
+### 4. LLM Services
 
-**职责**: 各种 AI 分析任务
+**Responsibility**: Various AI analysis tasks
 
 ```python
 class IntentParser:
     def parse(self, description: str, constraints: str) -> Dict:
         """
-        解析用户意图
-        
-        输入: "fitness influencers in Singapore"
-        输出: {
+        Parse user intent
+
+        Input: "fitness influencers in Singapore"
+        Output: {
             "industry": "fitness",
             "location": "Singapore",
             "constraints": []
@@ -853,43 +853,43 @@ class IntentParser:
 class GoogleDorkGenerator:
     def generate(self, intent: Dict) -> str:
         """
-        生成 Google Dork
-        
-        输入: {"industry": "fitness", "location": "Singapore"}
-        输出: "site:instagram.com fitness Singapore"
+        Generate Google Dork
+
+        Input: {"industry": "fitness", "location": "Singapore"}
+        Output: "site:instagram.com fitness Singapore"
         """
 
 class ProfileSummaryGenerator:
     def generate(self, profile_data: Dict) -> str:
         """
-        生成 Profile Summary
-        
-        输入: IG profile + posts 数据
-        输出: 简洁的概况文本（2-3 句话）
+        Generate Profile Summary
+
+        Input: IG profile + posts data
+        Output: Concise summary text (2-3 sentences)
         """
 
 class AudienceAnalyzer:
     def analyze(self, profile_data: Dict, summary: str) -> str:
         """
-        分析受众
-        
-        输入: profile 数据 + summary
-        输出: 受众分析（年龄、性别、兴趣等）
+        Analyze audience
+
+        Input: profile data + summary
+        Output: Audience analysis (age, gender, interests, etc.)
         """
 
 class CollaborationAnalyzer:
     def analyze(self, profile_data: Dict, summary: str) -> str:
         """
-        分析合作机会
-        
-        输入: profile 数据 + summary
-        输出: 推荐的合作方式
+        Analyze collaboration opportunities
+
+        Input: profile data + summary
+        Output: Recommended collaboration methods
         """
 ```
 
-### 5. Apify Provider (数据抓取)
+### 5. Apify Provider
 
-**职责**: 封装 Apify API
+**Responsibility**: Encapsulate Apify API
 
 ```python
 class ApifyProvider:
@@ -899,37 +899,37 @@ class ApifyProvider:
         max_results: int = 50
     ) -> List[str]:
         """
-        Google 搜索
-        
-        使用 Apify Google Search Actor
-        返回: Instagram profile URLs 列表
+        Google Search
+
+        Uses Apify Google Search Actor
+        Returns: List of Instagram profile URLs
         """
-    
+
     def scrape_instagram_profile(
         self,
         username: str
     ) -> Dict:
         """
-        抓取 Instagram profile
-        
-        使用 Apify Instagram Profile Scraper
-        返回: {
+        Scrape Instagram profile
+
+        Uses Apify Instagram Profile Scraper
+        Returns: {
             "handle": "username",
             "followers": 50000,
             "bio": "...",
-            "posts": [...]  # 最近 12 个帖子
+            "posts": [...]  # Latest 12 posts
         }
         """
 ```
 
 ---
 
-## API 参考
+## API Reference
 
-### 请求管理
+### Request Management
 
 #### POST `/api/v1/requests`
-创建新的搜索请求
+Create a new search request
 
 **Request**:
 ```json
@@ -949,7 +949,7 @@ class ApifyProvider:
 ```
 
 #### GET `/api/v1/requests/{id}`
-获取请求状态
+Get request status
 
 **Response**:
 ```json
@@ -966,11 +966,11 @@ class ApifyProvider:
 ```
 
 #### GET `/api/v1/requests/{id}/results`
-获取搜索结果
+Get search results
 
 **Query Parameters**:
-- `limit`: 默认 20
-- `offset`: 默认 0
+- `limit`: Default 20
+- `offset`: Default 0
 
 **Response**:
 ```json
@@ -995,87 +995,87 @@ class ApifyProvider:
 }
 ```
 
-### 影响者管理
+### Influencer Management
 
 #### GET `/api/v1/influencers`
-列出所有影响者
+List all influencers
 
 **Query Parameters**:
-- `category`: 过滤分类
-- `min_followers`: 最小粉丝数
-- `limit`: 默认 50
-- `offset`: 默认 0
+- `category`: Filter by category
+- `min_followers`: Minimum follower count
+- `limit`: Default 50
+- `offset`: Default 0
 
 #### GET `/api/v1/influencers/{id}`
-获取单个影响者详情
+Get single influencer details
 
 #### POST `/api/v1/influencers/{id}/update`
-手动更新影响者数据
+Manually update influencer data
 
 ---
 
-## 配置说明
+## Configuration
 
-### 环境变量
+### Environment Variables
 
 `backend/.env`:
 
 ```env
-# ==== LLM 配置 ====
-LLM_PROVIDER=gemini                    # gemini 或 openai
+# ==== LLM Configuration ====
+LLM_PROVIDER=gemini                    # gemini or openai
 GEMINI_API_KEY=your_gemini_key
 GEMINI_MODEL=gemini-2.0-flash-exp
 
-# ==== Pinecone 配置 ====
+# ==== Pinecone Configuration ====
 PINECONE_API_KEY=your_pinecone_key
 PINECONE_INDEX=moreach
 PINECONE_HOST=your-index-host.pinecone.io
 
-# ==== Apify 配置 ====
+# ==== Apify Configuration ====
 APIFY_TOKEN=your_apify_token
 
-# Apify Actors (可选，有默认值)
+# Apify Actors (optional, has defaults)
 APIFY_GOOGLE_SEARCH_ACTOR=apify~google-search-scraper
 APIFY_INSTAGRAM_SCRAPER_ACTOR=apify~instagram-profile-scraper
 
-# ==== 数据库 ====
+# ==== Database ====
 DATABASE_URL=sqlite:///./app.db
 
 # ==== Redis (Celery) ====
 REDIS_URL=redis://localhost:6379/0
 
-# ==== LangChain (可选) ====
-USE_LANGCHAIN_CHAINS=true              # 启用 LangChain
-USE_LANGCHAIN_EMBEDDINGS=false         # 保持 false
-USE_LANGCHAIN_VECTORSTORE=false        # 保持 false
+# ==== LangChain (optional) ====
+USE_LANGCHAIN_CHAINS=true              # Enable LangChain
+USE_LANGCHAIN_EMBEDDINGS=false         # Keep false
+USE_LANGCHAIN_VECTORSTORE=false        # Keep false
 ```
 
-### Pinecone 配置
+### Pinecone Configuration
 
-**Index 设置**:
-- Dimensions: 根据 embedding model（通常 1024 或 1536）
+**Index Settings**:
+- Dimensions: Based on embedding model (usually 1024 or 1536)
 - Metric: cosine
-- Pod Type: p1.x1 或更高
+- Pod Type: p1.x1 or higher
 
-**Inference API** (推荐):
+**Inference API** (recommended):
 ```python
-# 使用 Pinecone 内置 embedding
+# Use Pinecone built-in embedding
 vector_store.upsert_texts(
     texts=["text content"],
-    inference=True  # 自动 embedding
+    inference=True  # Auto embedding
 )
 ```
 
 ---
 
-## 使用指南
+## Usage Guide
 
-### 快速开始
+### Quick Start
 
-#### 1. 启动服务
+#### 1. Start Services
 
 ```bash
-# Terminal 1: API 服务器
+# Terminal 1: API Server
 cd backend
 python -m app.main
 
@@ -1087,16 +1087,16 @@ cd frontend
 npm run dev
 ```
 
-#### 2. 创建搜索请求
+#### 2. Create Search Request
 
-**方式 1: 通过前端**
-1. 访问 http://localhost:3000/try
-2. 输入描述："fitness influencers in Singapore"
-3. 可选：添加约束
-4. 点击 "Search"
-5. 等待结果（5-10分钟）
+**Method 1: Via Frontend**
+1. Visit http://localhost:3000/try
+2. Enter description: "fitness influencers in Singapore"
+3. Optional: Add constraints
+4. Click "Search"
+5. Wait for results (5-10 minutes)
 
-**方式 2: 通过 API**
+**Method 2: Via API**
 ```bash
 curl -X POST http://localhost:8000/api/v1/requests \
   -H "Content-Type: application/json" \
@@ -1106,22 +1106,22 @@ curl -X POST http://localhost:8000/api/v1/requests \
   }'
 ```
 
-#### 3. 查看结果
+#### 3. View Results
 
 ```bash
-# 检查状态
+# Check status
 curl http://localhost:8000/api/v1/requests/1
 
-# 获取结果
+# Get results
 curl http://localhost:8000/api/v1/requests/1/results
 ```
 
-### 工作流示例
+### Workflow Example
 
-#### 场景：寻找健身影响者
+#### Scenario: Finding Fitness Influencers
 
 ```python
-# 1. 创建请求
+# 1. Create request
 response = requests.post(
     "http://localhost:8000/api/v1/requests",
     json={
@@ -1131,34 +1131,34 @@ response = requests.post(
 )
 request_id = response.json()["id"]
 
-# 2. 轮询状态
+# 2. Poll status
 import time
 while True:
     status_response = requests.get(
         f"http://localhost:8000/api/v1/requests/{request_id}"
     )
     status = status_response.json()["status"]
-    
+
     if status == "DONE":
         break
     elif status == "FAILED":
         print("Search failed!")
         exit(1)
-    
+
     print(f"Status: {status}, waiting...")
     time.sleep(30)
 
-# 3. 获取结果
+# 3. Get results
 results_response = requests.get(
     f"http://localhost:8000/api/v1/requests/{request_id}/results"
 )
 results = results_response.json()["results"]
 
-# 4. 处理结果
+# 4. Process results
 for result in results[:5]:  # Top 5
     influencer = result["influencer"]
     score = result["score"]
-    
+
     print(f"@{influencer['handle']} - {score*100:.1f}% match")
     print(f"Followers: {influencer['followers']:,}")
     print(f"Summary: {influencer['profile_summary']}")
@@ -1168,237 +1168,236 @@ for result in results[:5]:  # Top 5
 
 ---
 
-## 最佳实践
+## Best Practices
 
-### 搜索描述优化
+### Search Description Optimization
 
-**好的描述**:
+**Good descriptions**:
 ```
-✅ "fitness influencers in Singapore focusing on yoga and wellness"
-✅ "tech reviewers who cover smartphones and gadgets, based in US"
-✅ "fashion bloggers in Europe with minimalist aesthetic"
-```
-
-**不好的描述**:
-```
-❌ "influencers"（太泛）
-❌ "best fitness people"（太主观）
-❌ "找一些博主"（太模糊）
+"fitness influencers in Singapore focusing on yoga and wellness"
+"tech reviewers who cover smartphones and gadgets, based in US"
+"fashion bloggers in Europe with minimalist aesthetic"
 ```
 
-### 约束条件建议
+**Poor descriptions**:
+```
+"influencers" (too broad)
+"best fitness people" (too subjective)
+"find some bloggers" (too vague)
+```
 
-**有效约束**:
-- 粉丝数范围："10k-50k followers"
-- 互动率："high engagement rate"
-- 性别/年龄："female, 25-35 years old"
-- 地理位置："based in Singapore"
-- 内容类型："focus on product reviews"
+### Constraint Recommendations
 
-### 性能优化
+**Effective constraints**:
+- Follower range: "10k-50k followers"
+- Engagement rate: "high engagement rate"
+- Gender/age: "female, 25-35 years old"
+- Geographic location: "based in Singapore"
+- Content type: "focus on product reviews"
 
-**1. 批量处理**
-- 一次搜索可以发现 30-50 个 profiles
-- 避免频繁的小请求
+### Performance Optimization
 
-**2. 缓存利用**
-- 已抓取的 profile 会保存在数据库
-- 相似搜索会复用已有数据
+**1. Batch Processing**
+- A single search can discover 30-50 profiles
+- Avoid frequent small requests
 
-**3. 并行分析**
-- LLM 分析自动并行处理
-- 加快整体流程
+**2. Cache Utilization**
+- Scraped profiles are saved in the database
+- Similar searches will reuse existing data
 
-### 成本控制
+**3. Parallel Analysis**
+- LLM analysis automatically processes in parallel
+- Speeds up overall flow
 
-**Apify 使用**:
-- Google Search: ~$0.001/搜索
+### Cost Control
+
+**Apify Usage**:
+- Google Search: ~$0.001/search
 - Instagram Scraping: ~$0.01/profile
-- 总成本: ~$0.50-1.00/搜索（30-50 profiles）
+- Total cost: ~$0.50-1.00/search (30-50 profiles)
 
-**LLM 使用**:
-- Intent Analysis: 1 次
-- Dork Generation: 1 次
-- Profile Analysis: 3 次/profile × 50 profiles = 150 次
-- 使用 Gemini Flash 可大幅降低成本
+**LLM Usage**:
+- Intent Analysis: 1 time
+- Dork Generation: 1 time
+- Profile Analysis: 3 times/profile x 50 profiles = 150 times
+- Using Gemini Flash can significantly reduce costs
 
-**Pinecone 使用**:
-- 使用 Inference API 节省 embedding 成本
-- 按需索引，不存储冗余数据
+**Pinecone Usage**:
+- Use Inference API to save embedding costs
+- Index on demand, don't store redundant data
 
 ---
 
-## 故障排查
+## Troubleshooting
 
-### 问题：搜索一直是 PROCESSING 状态
+### Issue: Search Stuck in PROCESSING Status
 
-**可能原因**:
-1. Celery worker 未运行
-2. Apify 配额不足
-3. LLM API 限流
-4. 网络问题
+**Possible causes**:
+1. Celery worker not running
+2. Apify quota insufficient
+3. LLM API rate limited
+4. Network issues
 
-**排查步骤**:
+**Troubleshooting steps**:
 ```bash
-# 1. 检查 Celery worker 日志
+# 1. Check Celery worker logs
 tail -f celery_worker.log
 
-# 2. 检查 Apify 配额
-# 访问 https://console.apify.com/account/usage
+# 2. Check Apify quota
+# Visit https://console.apify.com/account/usage
 
-# 3. 测试 LLM API
+# 3. Test LLM API
 python -c "from app.services.llm.client import LLMClient; \
             print(LLMClient().analyze('test'))"
 
-# 4. 手动触发任务
+# 4. Manually trigger task
 python -c "from app.workers.tasks import run_discovery_pipeline; \
             run_discovery_pipeline.apply(args=(1,))"
 ```
 
-### 问题：搜索结果为空
+### Issue: Empty Search Results
 
-**可能原因**:
-1. Google 搜索未找到相关 profiles
-2. Instagram 抓取失败
-3. Pinecone 搜索未匹配
+**Possible causes**:
+1. Google search found no relevant profiles
+2. Instagram scraping failed
+3. Pinecone search didn't match
 
-**排查步骤**:
+**Troubleshooting steps**:
 ```bash
-# 1. 检查 Request 的 intent
+# 1. Check Request intent
 curl http://localhost:8000/api/v1/requests/1 | jq '.intent'
 
-# 2. 检查数据库中是否有 influencers
+# 2. Check if database has influencers
 sqlite3 app.db "SELECT COUNT(*) FROM influencers;"
 
-# 3. 检查 Pinecone 中的向量数量
+# 3. Check vector count in Pinecone
 python scripts/debug_pinecone_search.py
 
-# 4. 手动测试搜索
+# 4. Test search manually
 curl http://localhost:8000/api/v1/influencers?limit=10
 ```
 
-### 问题：数据不一致（SQLite vs Pinecone）
+### Issue: Data Inconsistency (SQLite vs Pinecone)
 
-**排查**:
+**Troubleshooting**:
 ```bash
-# 检查同步状态
+# Check sync status
 python scripts/sync_check.py
 
-# 从 SQLite 同步到 Pinecone
+# Sync from SQLite to Pinecone
 python scripts/sync_sqlite_to_pinecone.py
 
-# 从 Pinecone 同步到 SQLite（谨慎使用）
+# Sync from Pinecone to SQLite (use with caution)
 python scripts/sync_pinecone_to_sqlite.py
 ```
 
-### 问题：LangChain 启用后出错
+### Issue: Errors After Enabling LangChain
 
-**排查**:
+**Troubleshooting**:
 ```bash
-# 1. 确认依赖已安装
+# 1. Confirm dependencies installed
 pip install -r requirements.txt
 
-# 2. 检查配置
+# 2. Check configuration
 grep USE_LANGCHAIN backend/.env
 
-# 3. 测试 LangChain
+# 3. Test LangChain
 python -m app.services.langchain_poc.test_llm_chain
 
-# 4. 如果失败，回滚
-# 编辑 .env: USE_LANGCHAIN_CHAINS=false
+# 4. If failed, rollback
+# Edit .env: USE_LANGCHAIN_CHAINS=false
 ```
 
 ---
 
-## 技术参考
+## Technical Reference
 
-### 代码结构
+### Code Structure
 
 ```
 backend/app/
-├── api/v1/routes.py              # API 端点
+├── api/v1/routes.py              # API endpoints
 ├── models/
-│   ├── tables.py                 # 数据库模型
+│   ├── tables.py                 # Database models
 │   └── schemas.py                # Pydantic schemas
 ├── providers/
-│   ├── apify/client.py          # Apify 封装
-│   ├── google/search.py         # Google 搜索
-│   └── instagram/scrape.py      # IG 抓取
+│   ├── apify/client.py          # Apify wrapper
+│   ├── google/search.py         # Google search
+│   └── instagram/scrape.py      # IG scraping
 ├── services/
 │   ├── discovery/
-│   │   ├── manager.py           # 主协调器
-│   │   ├── pipeline.py          # 发现流程
-│   │   └── search.py            # 向量搜索
-│   ├── llm/                     # LLM 服务
+│   │   ├── manager.py           # Main orchestrator
+│   │   ├── pipeline.py          # Discovery flow
+│   │   └── search.py            # Vector search
+│   ├── llm/                     # LLM services
 │   │   ├── intent.py
 │   │   ├── dork.py
 │   │   ├── profile_summary.py
 │   │   ├── audience_analysis.py
 │   │   └── collaboration_analysis.py
-│   ├── langchain/               # LangChain 集成（可选）
+│   ├── langchain/               # LangChain integration (optional)
 │   │   ├── config.py
 │   │   ├── prompts/
 │   │   └── chains/
 │   └── vector/
-│       └── pinecone.py          # Pinecone 客户端
+│       └── pinecone.py          # Pinecone client
 └── workers/
-    ├── celery_app.py            # Celery 配置
-    └── tasks.py                 # 异步任务
+    ├── celery_app.py            # Celery configuration
+    └── tasks.py                 # Async tasks
 
 frontend/app/
-├── try/page.tsx                 # 搜索页面
+├── try/page.tsx                 # Search page
 ├── lib/
-│   ├── api.ts                   # API 调用
-│   └── types.ts                 # TypeScript 类型
-└── components/                  # UI 组件
+│   ├── api.ts                   # API calls
+│   └── types.ts                 # TypeScript types
+└── components/                  # UI components
 ```
 
-### 关键文件
+### Key Files
 
-**后端**:
-- `backend/app/services/discovery/manager.py` - 主要业务逻辑
-- `backend/app/services/discovery/pipeline.py` - 发现流程实现
-- `backend/app/api/v1/routes.py` - API 端点定义
-- `backend/app/providers/apify/client.py` - Apify 集成
+**Backend**:
+- `backend/app/services/discovery/manager.py` - Main business logic
+- `backend/app/services/discovery/pipeline.py` - Discovery flow implementation
+- `backend/app/api/v1/routes.py` - API endpoint definitions
+- `backend/app/providers/apify/client.py` - Apify integration
 
-**前端**:
-- `frontend/app/try/page.tsx` - 搜索界面
-
----
-
-## 相关文档
-
-- [README.md](README.md) - 项目概览
-- [ARCHITECTURE.md](ARCHITECTURE.md) - 完整架构文档
-- [REDDIT_DESIGN.md](REDDIT_DESIGN.md) - Reddit 功能设计
-- [LANGCHAIN_MIGRATION_GUIDE.md](LANGCHAIN_MIGRATION_GUIDE.md) - LangChain 使用指南
+**Frontend**:
+- `frontend/app/try/page.tsx` - Search interface
 
 ---
 
-## 结语
+## Related Documentation
 
-Instagram Influencer Discovery 是一个成熟的、生产就绪的系统，采用清晰的数据架构和智能的 AI 分析。
-
-### 核心优势
-
-✅ **AI 驱动** - 全流程智能化  
-✅ **数据一致性** - SQLite 单一数据源  
-✅ **高效搜索** - 向量化语义搜索  
-✅ **可扩展** - 清晰的代码结构  
-✅ **成本优化** - 批量处理和缓存  
-
-### 开始使用
-
-1. 配置 Apify、Pinecone 和 Gemini API
-2. 启动所有服务
-3. 创建第一个搜索请求
-4. 查看和分析结果
-
-祝你找到完美的影响者合作伙伴！🚀
+- [README.md](README.md) - Project overview
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Complete architecture documentation
+- [REDDIT_DESIGN.md](REDDIT_DESIGN.md) - Reddit feature design
+- [LANGCHAIN_MIGRATION_GUIDE.md](LANGCHAIN_MIGRATION_GUIDE.md) - LangChain usage guide
 
 ---
 
-**文档版本**: 1.0  
-**最后更新**: 2026-01-21  
-**维护者**: AI Assistant
+## Conclusion
 
+Instagram Influencer Discovery is a mature, production-ready system with clear data architecture and intelligent AI analysis.
+
+### Core Advantages
+
+- **AI-Driven** - Fully intelligent workflow
+- **Data Consistency** - SQLite single source of truth
+- **Efficient Search** - Vectorized semantic search
+- **Extensible** - Clean code structure
+- **Cost Optimized** - Batch processing and caching
+
+### Getting Started
+
+1. Configure Apify, Pinecone, and Gemini API
+2. Start all services
+3. Create your first search request
+4. View and analyze results
+
+Good luck finding your perfect influencer partners!
+
+---
+
+**Document Version**: 1.0
+**Last Updated**: 2026-01-31
+**Maintainer**: AI Assistant

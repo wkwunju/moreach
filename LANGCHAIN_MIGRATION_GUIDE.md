@@ -1,54 +1,54 @@
-# LangChain 迁移指南
+# LangChain Migration Guide
 
-## 概述
+## Overview
 
-本指南介绍如何启用和使用项目中的 LangChain 集成。LangChain 已成功集成到所有 LLM 服务中，现在可以通过简单的配置开关启用。
+This guide explains how to enable and use the LangChain integration in the project. LangChain has been successfully integrated into all LLM services and can now be enabled through a simple configuration switch.
 
 ---
 
-## 快速开始
+## Quick Start
 
-### 1. 安装依赖
+### 1. Install Dependencies
 
 ```bash
 cd backend
 pip install -r requirements.txt
 ```
 
-新增的依赖包括：
+New dependencies include:
 - `langchain==0.3.0`
 - `langchain-core==0.3.0`
 - `langchain-openai==0.2.0`
 - `langchain-google-genai==2.0.0`
 - `langchain-pinecone==0.2.0`
 
-### 2. 启用 LangChain
+### 2. Enable LangChain
 
-在 `.env` 文件中添加或修改：
+Add or modify the following in your `.env` file:
 
 ```bash
 # LangChain feature flags
-USE_LANGCHAIN_CHAINS=true        # 启用 LangChain LLM chains
-USE_LANGCHAIN_EMBEDDINGS=false   # 暂不推荐
-USE_LANGCHAIN_VECTORSTORE=false  # 暂不推荐
+USE_LANGCHAIN_CHAINS=true        # Enable LangChain LLM chains
+USE_LANGCHAIN_EMBEDDINGS=false   # Not recommended at this time
+USE_LANGCHAIN_VECTORSTORE=false  # Not recommended at this time
 ```
 
-### 3. 重启服务
+### 3. Restart Services
 
 ```bash
-# 重启 API 服务
+# Restart API service
 uvicorn app.main:app --reload
 
-# 重启 Celery Worker
+# Restart Celery Worker
 celery -A app.workers.celery_app worker --loglevel=info
 
-# 重启 Celery Beat
+# Restart Celery Beat
 celery -A app.workers.celery_app beat --loglevel=info
 ```
 
-### 4. 验证
+### 4. Verify
 
-查看日志，应该看到类似：
+Check the logs, you should see something like:
 ```
 INFO: Using LangChain IntentChainService
 INFO: Using LangChain chains for all LLM services
@@ -56,42 +56,42 @@ INFO: Using LangChain chains for all LLM services
 
 ---
 
-## 已迁移的服务
+## Migrated Services
 
-### Instagram Discovery 服务
+### Instagram Discovery Services
 
-| 原服务 | LangChain 实现 | 文件位置 |
-|--------|---------------|----------|
+| Original Service | LangChain Implementation | File Location |
+|------------------|--------------------------|---------------|
 | `IntentParser` | `IntentChainService` | `app/services/langchain/chains/intent_chain.py` |
 | `GoogleDorkGenerator` | `GoogleDorkChainService` | `app/services/langchain/chains/dork_chain.py` |
 | `ProfileSummaryGenerator` | `ProfileSummaryChainService` | `app/services/langchain/chains/profile_chain.py` |
 | `AudienceAnalyzer` | `AudienceAnalysisChainService` | `app/services/langchain/chains/audience_chain.py` |
 | `CollaborationAnalyzer` | `CollaborationAnalysisChainService` | `app/services/langchain/chains/collaboration_chain.py` |
 
-**集成位置**:
+**Integration Locations**:
 - `app/services/discovery/search.py`
 - `app/services/discovery/pipeline.py`
 
-### Reddit Lead Generation 服务
+### Reddit Lead Generation Services
 
-| 原服务 | LangChain 实现 | 文件位置 |
-|--------|---------------|----------|
+| Original Service | LangChain Implementation | File Location |
+|------------------|--------------------------|---------------|
 | `RedditScoringService.llm_analyze` | `RedditScoringChainService` | `app/services/langchain/chains/reddit_scoring_chain.py` |
 
-**集成位置**:
+**Integration Location**:
 - `app/services/reddit/scoring.py`
 
 ---
 
-## 架构说明
+## Architecture
 
-### 目录结构
+### Directory Structure
 
 ```
 backend/app/services/langchain/
 ├── __init__.py
-├── config.py                    # LLM 统一配置
-├── prompts/                     # Prompt 模板
+├── config.py                    # Unified LLM configuration
+├── prompts/                     # Prompt templates
 │   ├── __init__.py
 │   ├── intent.py
 │   ├── dork.py
@@ -109,58 +109,58 @@ backend/app/services/langchain/
     └── reddit_scoring_chain.py
 ```
 
-### 配置管理
+### Configuration Management
 
-在 `app/services/langchain/config.py` 中统一管理 LLM 配置：
+LLM configuration is centrally managed in `app/services/langchain/config.py`:
 
 ```python
 from app.services.langchain.config import get_llm, get_embedding
 
-# 获取配置的 LLM（根据 LLM_PROVIDER 自动选择 OpenAI/Gemini）
+# Get configured LLM (automatically selects OpenAI/Gemini based on LLM_PROVIDER)
 llm = get_llm()
 
-# 获取配置的 Embedding（根据 EMBEDDING_PROVIDER 自动选择）
+# Get configured Embedding (automatically selects based on EMBEDDING_PROVIDER)
 embeddings = get_embedding()
 ```
 
-### Prompt 模板
+### Prompt Templates
 
-所有 prompt 模板集中在 `prompts/` 目录中，便于：
-- 版本控制
-- A/B 测试
-- 多语言支持
-- 统一修改
+All prompt templates are centralized in the `prompts/` directory for:
+- Version control
+- A/B testing
+- Multi-language support
+- Unified modifications
 
-示例：
+Example:
 ```python
 from app.services.langchain.prompts.intent import create_intent_prompt
 
 prompt = create_intent_prompt()
-# PromptTemplate 对象，包含所有变量和模板
+# PromptTemplate object containing all variables and templates
 ```
 
 ### LangChain Expression Language (LCEL)
 
-所有 chains 使用 LCEL 语法：
+All chains use LCEL syntax:
 
 ```python
 chain = prompt | llm | parser
 result = chain.invoke({"variable": "value"})
 ```
 
-**优势**：
-- 简洁明了
-- 自动错误处理
-- 支持流式输出
-- 易于调试和测试
+**Advantages**:
+- Concise and clear
+- Automatic error handling
+- Supports streaming output
+- Easy to debug and test
 
 ---
 
-## 功能开关详解
+## Feature Flags Explained
 
-### `USE_LANGCHAIN_CHAINS` ✅ 推荐启用
+### `USE_LANGCHAIN_CHAINS` - Recommended to Enable
 
-**影响的服务**：
+**Affected Services**:
 - Intent parsing
 - Google dork generation
 - Profile summary
@@ -168,181 +168,181 @@ result = chain.invoke({"variable": "value"})
 - Collaboration analysis
 - Reddit lead scoring
 
-**优势**：
-- 代码减少 60-70%
-- Prompt 管理更清晰
-- 统一的接口
-- 更好的可测试性
+**Advantages**:
+- 60-70% code reduction
+- Clearer prompt management
+- Unified interface
+- Better testability
 
-**风险**: 低（不涉及数据迁移）
+**Risk**: Low (no data migration involved)
 
-**建议**: ✅ 立即启用
-
----
-
-### `USE_LANGCHAIN_EMBEDDINGS` ⚠️ 谨慎评估
-
-**当前状态**: 
-- 项目使用 Pinecone Inference API（内置 embedding）
-- LangChain 需要外部 embedding（OpenAI/Gemini）
-
-**如果启用**:
-- 需要切换 `EMBEDDING_PROVIDER` 到 `openai` 或 `gemini`
-- 可能增加 embedding 成本
-- 不需要重新索引数据（如果向量维度相同）
-
-**建议**: ⚠️ 除非计划切换到外部 embedding，否则保持 `false`
+**Recommendation**: Enable immediately
 
 ---
 
-### `USE_LANGCHAIN_VECTORSTORE` ❌ 暂不推荐
+### `USE_LANGCHAIN_EMBEDDINGS` - Evaluate Carefully
 
-**当前状态**: 
-- `app/services/vector/pinecone.py` 已经稳定
-- 与 Pinecone Inference API 集成良好
+**Current Status**:
+- The project uses Pinecone Inference API (built-in embedding)
+- LangChain requires external embedding (OpenAI/Gemini)
 
-**如果启用**:
-- 需要重新配置 embedding 方式
-- 可能需要重新索引所有数据
-- 收益不明确（只是代码简化）
+**If Enabled**:
+- Need to switch `EMBEDDING_PROVIDER` to `openai` or `gemini`
+- May increase embedding costs
+- No need to re-index data (if vector dimensions are the same)
 
-**建议**: ❌ 保持 `false`，除非有明确需求（如 RAG 功能）
+**Recommendation**: Unless planning to switch to external embedding, keep it `false`
 
 ---
 
-## 回滚机制
+### `USE_LANGCHAIN_VECTORSTORE` - Not Recommended
 
-如果 LangChain 出现问题，可以立即回滚：
+**Current Status**:
+- `app/services/vector/pinecone.py` is already stable
+- Good integration with Pinecone Inference API
 
-### 方法 1: 配置开关
+**If Enabled**:
+- Need to reconfigure embedding method
+- May need to re-index all data
+- Uncertain benefits (just code simplification)
 
-在 `.env` 中设置：
+**Recommendation**: Keep `false` unless there is a clear need (e.g., RAG functionality)
+
+---
+
+## Rollback Mechanism
+
+If LangChain encounters issues, you can rollback immediately:
+
+### Method 1: Configuration Switch
+
+Set in `.env`:
 ```bash
 USE_LANGCHAIN_CHAINS=false
 ```
 
-重启服务即可回到旧实现。
+Restart services to return to the old implementation.
 
-### 方法 2: 代码级回滚
+### Method 2: Code-Level Rollback
 
-所有旧代码都保留在原位：
+All old code is preserved in place:
 - `app/services/llm/intent.py`
 - `app/services/llm/profile_summary.py`
-- 等等
+- etc.
 
-如果需要完全移除 LangChain，只需：
-1. 从 `requirements.txt` 删除 LangChain 依赖
-2. 删除 `app/services/langchain/` 目录
-3. 移除集成代码中的条件逻辑
+If you need to completely remove LangChain:
+1. Delete LangChain dependencies from `requirements.txt`
+2. Delete the `app/services/langchain/` directory
+3. Remove conditional logic from integration code
 
 ---
 
-## 测试
+## Testing
 
-### 运行 PoC 测试
+### Running PoC Tests
 
-在迁移前，可以运行 PoC 测试来验证 LangChain 功能：
+Before migration, you can run PoC tests to verify LangChain functionality:
 
 ```bash
 cd backend
 
-# 测试 Embedding
+# Test Embedding
 python -m app.services.langchain_poc.test_embedding
 
-# 测试 Vector Store
+# Test Vector Store
 python -m app.services.langchain_poc.test_vectorstore
 
-# 测试 LLM Chain
+# Test LLM Chain
 python -m app.services.langchain_poc.test_llm_chain
 ```
 
-### 对比测试
+### Comparison Testing
 
-启用 LangChain 后，可以对比新旧实现：
+After enabling LangChain, you can compare old and new implementations:
 
 ```python
-# 在测试环境中
-from app.services.llm.intent import IntentParser  # 旧
-from app.services.langchain.chains.intent_chain import IntentChainService  # 新
+# In test environment
+from app.services.llm.intent import IntentParser  # Old
+from app.services.langchain.chains.intent_chain import IntentChainService  # New
 
 old_parser = IntentParser()
 new_parser = IntentChainService()
 
-# 对比结果
+# Compare results
 old_result = old_parser.parse("fitness influencers", "Singapore")
 new_result = new_parser.parse("fitness influencers", "Singapore")
 
-assert old_result == new_result  # 应该相同或非常接近
+assert old_result == new_result  # Should be the same or very close
 ```
 
 ---
 
-## 性能考虑
+## Performance Considerations
 
-### LLM 调用成本
+### LLM Call Costs
 
-LangChain 不会增加 LLM 调用成本：
-- 相同的 prompt
-- 相同的模型
-- 相同的 token 消耗
+LangChain does not increase LLM call costs:
+- Same prompts
+- Same models
+- Same token consumption
 
-### 运行时开销
+### Runtime Overhead
 
-LangChain 增加的开销：
-- 首次导入：~50-100ms（仅一次）
-- 每次调用：~1-5ms（可忽略）
+LangChain overhead:
+- First import: ~50-100ms (one-time)
+- Each call: ~1-5ms (negligible)
 
-总体性能影响 < 1%。
+Overall performance impact < 1%.
 
-### 内存使用
+### Memory Usage
 
-LangChain 依赖包：
-- 安装大小：~50MB
-- 运行时内存：+10-20MB
+LangChain dependencies:
+- Installation size: ~50MB
+- Runtime memory: +10-20MB
 
-对于现代服务器，影响可忽略。
+For modern servers, the impact is negligible.
 
 ---
 
-## 常见问题
+## FAQ
 
-### Q: 启用 LangChain 后 API 报错？
+### Q: API errors after enabling LangChain?
 
-A: 检查依赖是否完全安装：
+A: Check if dependencies are fully installed:
 ```bash
 pip install -r requirements.txt
 ```
 
-确保所有 LangChain 包都已安装。
+Ensure all LangChain packages are installed.
 
-### Q: 输出格式与之前不同？
+### Q: Output format differs from before?
 
-A: LangChain 的输出解析器可能格式略有不同。检查 `app/services/langchain/prompts/` 中的模板，确保与原有 prompt 一致。
+A: LangChain's output parsers may have slightly different formatting. Check the templates in `app/services/langchain/prompts/` to ensure consistency with original prompts.
 
-### Q: 性能比之前慢？
+### Q: Performance is slower than before?
 
-A: 首次调用会有缓存预热。后续调用应该与旧实现性能相当。如果持续变慢，请检查：
-- 网络延迟
-- LLM provider 响应时间
-- 日志级别（调试日志会影响性能）
+A: The first call will have cache warm-up. Subsequent calls should have comparable performance to the old implementation. If slowness persists, check:
+- Network latency
+- LLM provider response time
+- Log levels (debug logging affects performance)
 
-### Q: 想使用 LangChain 的高级功能（如 RAG）？
+### Q: Want to use advanced LangChain features (e.g., RAG)?
 
-A: 当前实现是基础集成。如需高级功能：
-1. 参考 LangChain 官方文档
-2. 在 `app/services/langchain/chains/` 中创建新的 chain
-3. 添加到相应服务中
+A: The current implementation is a basic integration. For advanced features:
+1. Refer to the official LangChain documentation
+2. Create a new chain in `app/services/langchain/chains/`
+3. Add it to the corresponding service
 
-### Q: 如何添加新的 LLM 服务？
+### Q: How to add a new LLM service?
 
-A: 按照模式创建：
+A: Follow the pattern:
 
-1. 在 `prompts/` 中创建 prompt 模板
-2. 在 `chains/` 中创建 chain
-3. 在业务代码中添加配置开关
-4. 测试并验证
+1. Create a prompt template in `prompts/`
+2. Create a chain in `chains/`
+3. Add a configuration switch in the business code
+4. Test and verify
 
-示例：
+Example:
 ```python
 # prompts/my_service.py
 TEMPLATE = """..."""
@@ -362,48 +362,46 @@ def create_my_chain():
 class MyChainService:
     def __init__(self):
         self.chain = create_my_chain()
-    
+
     def process(self, input_data):
         return self.chain.invoke(input_data)
 ```
 
 ---
 
-## 下一步
+## Next Steps
 
-### 立即行动
+### Immediate Actions
 
-1. ✅ 安装依赖：`pip install -r requirements.txt`
-2. ✅ 启用配置：`USE_LANGCHAIN_CHAINS=true`
-3. ✅ 重启服务
-4. ✅ 验证日志
+1. Install dependencies: `pip install -r requirements.txt`
+2. Enable configuration: `USE_LANGCHAIN_CHAINS=true`
+3. Restart services
+4. Verify logs
 
-### 可选行动
+### Optional Actions
 
-- ⚠️ 评估 embedding 迁移（如果计划切换 provider）
-- ❌ 暂不考虑 vector store 迁移
+- Evaluate embedding migration (if planning to switch providers)
+- Do not consider vector store migration at this time
 
-### 监控和反馈
+### Monitoring and Feedback
 
-启用 LangChain 后，监控：
-- API 响应时间
-- LLM token 消耗
-- 错误率
-- 用户反馈
+After enabling LangChain, monitor:
+- API response times
+- LLM token consumption
+- Error rates
+- User feedback
 
-如有问题，立即回滚到旧实现（`USE_LANGCHAIN_CHAINS=false`）。
-
----
-
-## 相关文档
-
-- [LangChain 评估报告](LANGCHAIN_EVALUATION.md) - 详细的评估和决策依据
-- [LangChain 官方文档](https://python.langchain.com/docs/get_started/introduction)
-- [项目架构文档](ARCHITECTURE.md)
-- [Reddit Lead Generation](REDDIT_LEAD_GENERATION.md)
+If issues arise, immediately rollback to the old implementation (`USE_LANGCHAIN_CHAINS=false`).
 
 ---
 
-**更新日期**: 2026-01-12  
-**版本**: 1.0.0
+## Related Documentation
 
+- [LangChain Official Documentation](https://python.langchain.com/docs/get_started/introduction)
+- [Project Architecture Documentation](ARCHITECTURE.md)
+- [Reddit Lead Generation Design](REDDIT_DESIGN.md)
+
+---
+
+**Last Updated**: 2026-01-31
+**Version**: 1.0.0

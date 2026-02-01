@@ -26,10 +26,16 @@ else:
 
 app = FastAPI(title=settings.app_name)
 
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://moreach.ai",
+    "https://www.moreach.ai",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,  # We use Bearer tokens, not cookies
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -401,6 +401,35 @@ function RedditPageContent() {
   const [streamComplete, setStreamComplete] = useState<SSECompleteEvent | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
+  // Auto-refresh leads when on leads page (to show newly scored leads)
+  useEffect(() => {
+    if (step !== "leads" || !currentCampaign || isStreaming) return;
+
+    const refreshLeads = async () => {
+      try {
+        const data = await fetchRedditLeads(currentCampaign.id, filterStatus);
+        // Only update if counts changed (new leads scored)
+        if (data.new_leads !== leadCounts.new || data.contacted_leads !== leadCounts.contacted || data.leads.length !== leads.length) {
+          setLeads(data.leads);
+          setLeadCounts({
+            new: data.new_leads,
+            contacted: data.contacted_leads
+          });
+          // Keep current selection if still in list, otherwise select first
+          if (selectedLead && !data.leads.find((l: RedditLead) => l.id === selectedLead.id)) {
+            setSelectedLead(getFirstSortedLead(data.leads, sortOrder));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to refresh leads:", err);
+      }
+    };
+
+    // Poll every 5 seconds
+    const intervalId = setInterval(refreshLeads, 5000);
+    return () => clearInterval(intervalId);
+  }, [step, currentCampaign, filterStatus, isStreaming, leadCounts.new, leadCounts.contacted, leads.length, selectedLead, sortOrder]);
+
   // Subreddit display states
   const [showMoreHighScore, setShowMoreHighScore] = useState(false);
   const [showLowScore, setShowLowScore] = useState(false);

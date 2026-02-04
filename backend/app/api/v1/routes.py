@@ -900,18 +900,29 @@ def get_campaign_leads(
         RedditLead.discovered_at.desc()
     )
     
-    # Get total count
+    # Get total count (after quality filter)
     total_leads = query.count()
-    
-    # Get counts by status
+
+    # Quality filter for counts - same as the main query filter
+    quality_filter = or_(
+        RedditLead.relevancy_score >= 50,  # New format: 50-100
+        and_(
+            RedditLead.relevancy_score <= 1,  # Old format: 0.0-1.0
+            RedditLead.relevancy_score >= 0.5
+        )
+    )
+
+    # Get counts by status (only counting leads that pass quality filter)
     new_leads = db.query(RedditLead).filter(
         RedditLead.campaign_id == campaign_id,
-        RedditLead.status == RedditLeadStatus.NEW
+        RedditLead.status == RedditLeadStatus.NEW,
+        quality_filter
     ).count()
 
     contacted_leads = db.query(RedditLead).filter(
         RedditLead.campaign_id == campaign_id,
-        RedditLead.status == RedditLeadStatus.CONTACTED
+        RedditLead.status == RedditLeadStatus.CONTACTED,
+        quality_filter
     ).count()
     
     # Apply pagination

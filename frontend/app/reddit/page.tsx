@@ -1190,16 +1190,9 @@ function RedditPageContent() {
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               {/* Header */}
               <div className="px-8 py-6 border-b border-gray-100 bg-gray-50/50">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-semibold text-gray-900">Create New Radar</h2>
-                    <p className="text-sm text-gray-500">Set up automated lead discovery</p>
-                  </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Create New Radar</h2>
+                  <p className="text-sm text-gray-500">Set up automated lead discovery</p>
                 </div>
               </div>
 

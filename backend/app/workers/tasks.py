@@ -257,3 +257,26 @@ def poll_reddit_leads() -> dict:
         raise
     finally:
         db.close()
+
+
+@celery_app.task(name="app.workers.tasks.poll_campaign_first")
+def poll_campaign_first(campaign_id: int) -> dict:
+    """
+    Run the first poll for a newly created campaign.
+    Called via Celery in production.
+    """
+    db = SessionLocal()
+    try:
+        logger.info(f"Starting first poll for campaign {campaign_id} (Celery task)")
+
+        polling_service = RedditPollingService()
+        summary = polling_service.poll_campaign_immediately(db, campaign_id)
+
+        logger.info(f"First poll completed for campaign {campaign_id}: {summary}")
+        return summary
+
+    except Exception as e:
+        logger.exception(f"First poll failed for campaign {campaign_id}")
+        raise
+    finally:
+        db.close()

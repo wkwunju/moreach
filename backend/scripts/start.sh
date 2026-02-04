@@ -10,6 +10,9 @@ echo "=========================================="
 echo "Starting Moreach Backend"
 echo "=========================================="
 
+# Enable Alembic mode (skip create_all in main.py since we run migrations here)
+export USE_ALEMBIC=true
+
 # Run smart migrations
 echo "Running database migrations..."
 python scripts/migrate.py

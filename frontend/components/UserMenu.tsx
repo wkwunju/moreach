@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { User, logout, getTrialDaysRemaining, isTrialActive } from "@/lib/auth";
 import UserAvatar from "./UserAvatar";
 import BillingDialog from "./BillingDialog";
+import SettingsDialog from "./SettingsDialog";
 
 interface UserMenuProps {
   user: User | null;
@@ -35,7 +36,14 @@ export default function UserMenu({
   const router = useRouter();
   const [showMenu, setShowMenu] = useState(false);
   const [showBillingDialog, setShowBillingDialog] = useState(false);
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(user);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Keep currentUser in sync with prop
+  useEffect(() => {
+    setCurrentUser(user);
+  }, [user]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -65,7 +73,11 @@ export default function UserMenu({
 
   const handleSettings = () => {
     setShowMenu(false);
-    router.push("/settings");
+    setShowSettingsDialog(true);
+  };
+
+  const handleUserUpdate = (updatedUser: User) => {
+    setCurrentUser(updatedUser);
   };
 
   const handleBilling = () => {
@@ -79,7 +91,7 @@ export default function UserMenu({
     }
   };
 
-  if (!user) return null;
+  if (!currentUser) return null;
 
   const dropdownPositionClass = position === "top"
     ? "bottom-full mb-2"
@@ -93,12 +105,12 @@ export default function UserMenu({
           onClick={() => setShowMenu(!showMenu)}
           className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-100 transition-colors text-left"
         >
-          <UserAvatar user={user} size="md" />
+          <UserAvatar user={currentUser} size="md" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900 truncate">
-              {user.full_name || "User"}
+              {currentUser.full_name || "User"}
             </p>
-            <p className="text-xs text-gray-500 truncate">{user.email}</p>
+            <p className="text-xs text-gray-500 truncate">{currentUser.email}</p>
           </div>
           {/* Chevron */}
           <svg
@@ -120,12 +132,12 @@ export default function UserMenu({
             {!compact && (
               <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
                 <p className="text-sm font-medium text-gray-900 truncate">
-                  {user.full_name || "User"}
+                  {currentUser.full_name || "User"}
                 </p>
-                <p className="text-xs text-gray-500 truncate">{user.email}</p>
-                {isTrialActive(user) && (
+                <p className="text-xs text-gray-500 truncate">{currentUser.email}</p>
+                {isTrialActive(currentUser) && (
                   <p className="text-xs text-amber-600 mt-1">
-                    {getTrialDaysRemaining(user)} days left in trial
+                    {getTrialDaysRemaining(currentUser)} days left in trial
                   </p>
                 )}
               </div>
@@ -178,9 +190,17 @@ export default function UserMenu({
         <BillingDialog
           isOpen={showBillingDialog}
           onClose={() => setShowBillingDialog(false)}
-          user={user}
+          user={currentUser}
         />
       )}
+
+      {/* Settings Dialog */}
+      <SettingsDialog
+        isOpen={showSettingsDialog}
+        onClose={() => setShowSettingsDialog(false)}
+        user={currentUser}
+        onUpdate={handleUserUpdate}
+      />
     </>
   );
 }

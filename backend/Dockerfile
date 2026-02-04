@@ -22,4 +22,8 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Make start script executable
+RUN chmod +x scripts/start.sh
+
+# Use start.sh to run migrations before starting the app
+CMD ["./scripts/start.sh"]

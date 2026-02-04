@@ -357,3 +357,129 @@ export async function createPortalSession(): Promise<PortalSessionResponse> {
 
   return response.json();
 }
+
+// ======= Profile API =======
+
+export interface ProfileUpdateData {
+  full_name: string;
+  company: string;
+  job_title: string;
+  industry: string;
+  usage_type: string;
+}
+
+export async function updateProfile(data: ProfileUpdateData): Promise<void> {
+  const response = await authFetch(`${baseUrl}/api/v1/auth/complete-profile`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to update profile" }));
+    throw new Error(error.detail || "Failed to update profile");
+  }
+
+  // Update local storage with new user data
+  const updatedUser = await response.json();
+  if (typeof window !== "undefined") {
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+    window.dispatchEvent(new Event("authChange"));
+  }
+}
+
+// ======= Plan Limits API =======
+
+export interface PlanUsageResponse {
+  profile_count: number;
+  max_profiles: number;
+  profiles_remaining: number;
+  can_create_profile: boolean;
+  current_plan: string;
+  tier_group: string;
+  next_tier: string | null;
+}
+
+export interface PlanLimitsResponse {
+  plan_name: string;
+  tier_group: string;
+  max_profiles: number;
+  max_subreddits_per_profile: number;
+  max_leads_per_month: number;
+  polls_per_day: number;
+  next_tier: string | null;
+}
+
+export interface LimitCheckResponse {
+  allowed: boolean;
+  reason: string | null;
+  current_count: number;
+  max_count: number;
+  upgrade_to: string | null;
+  current_plan: string;
+}
+
+export interface SubredditLimitCheckResponse {
+  allowed: boolean;
+  reason: string | null;
+  selected_count: number;
+  max_count: number;
+  upgrade_to: string | null;
+  current_plan: string;
+}
+
+/**
+ * Get current user's plan usage status
+ */
+export async function getPlanUsage(): Promise<PlanUsageResponse> {
+  const response = await authFetch(`${baseUrl}/api/v1/plan/usage`);
+
+  if (!response.ok) {
+    throw new Error("Failed to get plan usage");
+  }
+
+  return response.json();
+}
+
+/**
+ * Get the limits for the user's current plan
+ */
+export async function getPlanLimits(): Promise<PlanLimitsResponse> {
+  const response = await authFetch(`${baseUrl}/api/v1/plan/limits`);
+
+  if (!response.ok) {
+    throw new Error("Failed to get plan limits");
+  }
+
+  return response.json();
+}
+
+/**
+ * Check if user can create a new business profile
+ */
+export async function checkCanCreateProfile(): Promise<LimitCheckResponse> {
+  const response = await authFetch(`${baseUrl}/api/v1/plan/check-create-profile`);
+
+  if (!response.ok) {
+    throw new Error("Failed to check profile limit");
+  }
+
+  return response.json();
+}
+
+/**
+ * Check if user can select the specified number of subreddits
+ */
+export async function checkSubredditLimit(
+  campaignId: number,
+  count: number
+): Promise<SubredditLimitCheckResponse> {
+  const response = await authFetch(
+    `${baseUrl}/api/v1/plan/check-subreddit-limit/${campaignId}?count=${count}`
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to check subreddit limit");
+  }
+
+  return response.json();
+}

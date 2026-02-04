@@ -11,15 +11,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.tables import (
-    RedditCampaign, 
-    RedditCampaignSubreddit, 
+    RedditCampaign,
+    RedditCampaignSubreddit,
     RedditLead,
     RedditLeadStatus,
     GlobalSubredditPoll,
-    RedditCampaignStatus
+    RedditCampaignStatus,
+    APIType
 )
 from app.providers.reddit.factory import get_reddit_provider
 from app.services.reddit.scoring import RedditScoringService
+from app.services.usage_tracking import track_api_call
+from app.core.config import settings
 
 
 logger = logging.getLogger(__name__)
@@ -368,6 +371,10 @@ class RedditPollingService:
                 posts = self.poll_subreddit(db, subreddit_name, limit=20)
                 total_posts += len(posts)
 
+                # Track Reddit API call for this user
+                reddit_api_type = APIType.REDDIT_RAPIDAPI if settings.reddit_api_provider.lower() == "rapidapi" else APIType.REDDIT_APIFY
+                track_api_call(db, campaign.user_id, reddit_api_type)
+
                 # Distribute leads only to this campaign
                 leads_created = self._distribute_leads_to_campaign(
                     db, campaign_id, subreddit_name, posts
@@ -486,7 +493,12 @@ class RedditPollingService:
                     post=post_dict,
                     business_description=campaign.business_description
                 )
-                
+
+                # Track LLM call for scoring (only if LLM was actually called)
+                if score_result.get("passed_filter", False):
+                    llm_type = APIType.LLM_GEMINI if settings.llm_provider.lower() == "gemini" else APIType.LLM_OPENAI
+                    track_api_call(db, campaign.user_id, llm_type)
+
                 # 更新评分
                 lead.relevancy_score = score_result["relevancy_score"]
                 lead.relevancy_reason = score_result["relevancy_reason"]

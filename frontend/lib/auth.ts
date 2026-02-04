@@ -120,7 +120,7 @@ export async function refreshUser(): Promise<User | null> {
 // API fetch wrapper that automatically includes auth token
 export async function authFetch(url: string, options: RequestInit = {}) {
   const token = getToken();
-  
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
@@ -130,19 +130,34 @@ export async function authFetch(url: string, options: RequestInit = {}) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  // Add timeout of 30 seconds to prevent infinite loading
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-  // If unauthorized, clear auth and redirect to login
-  if (response.status === 401) {
-    logout();
-    if (typeof window !== 'undefined') {
-      window.location.href = "/login";
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    // If unauthorized, clear auth and redirect to login
+    if (response.status === 401) {
+      logout();
+      if (typeof window !== 'undefined') {
+        window.location.href = "/login";
+      }
     }
-  }
 
-  return response;
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timed out. Please try again.');
+    }
+    throw error;
+  }
 }
 

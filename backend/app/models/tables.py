@@ -290,6 +290,43 @@ class RedditLead(Base):
     campaign = relationship("RedditCampaign", back_populates="leads")
 
 
+# ======= Usage Tracking Models =======
+
+class APIType(str, enum.Enum):
+    """API types for usage tracking"""
+    REDDIT_APIFY = "REDDIT_APIFY"  # Apify Reddit scraper
+    REDDIT_RAPIDAPI = "REDDIT_RAPIDAPI"  # RapidAPI Reddit
+    LLM_GEMINI = "LLM_GEMINI"  # Gemini API calls
+    LLM_OPENAI = "LLM_OPENAI"  # OpenAI API calls
+    EMBEDDING = "EMBEDDING"  # Embedding API calls
+
+
+class UsageTracking(Base):
+    """
+    Tracks API usage per user per day.
+    Simple counter for ROI calculation and scam detection.
+    """
+    __tablename__ = "usage_tracking"
+    __table_args__ = (
+        UniqueConstraint('user_id', 'api_type', 'date', name='uq_user_api_date'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    api_type: Mapped[APIType] = mapped_column(Enum(APIType), index=True)
+    date: Mapped[datetime] = mapped_column(DateTime, index=True)  # Date only (no time)
+
+    # Counters
+    call_count: Mapped[int] = mapped_column(default=0)
+
+    # Optional: track tokens for LLM calls
+    input_tokens: Mapped[int] = mapped_column(default=0)
+    output_tokens: Mapped[int] = mapped_column(default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class GlobalSubredditPoll(Base):
     """
     Tracks centralized polling of subreddits

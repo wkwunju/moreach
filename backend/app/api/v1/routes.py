@@ -30,9 +30,13 @@ from app.models.tables import (
     # User models
     User,
     # Reddit models
-    RedditCampaign, RedditCampaignSubreddit, RedditLead, 
-    RedditCampaignStatus, RedditLeadStatus
+    RedditCampaign, RedditCampaignSubreddit, RedditLead,
+    RedditCampaignStatus, RedditLeadStatus,
+    # Usage tracking
+    APIType
 )
+from app.services.usage_tracking import track_api_call
+from app.core.config import settings
 from app.services.discovery.manager import DiscoveryManager
 from app.services.reddit.discovery import RedditDiscoveryService
 from app.services.reddit.cache import SubredditCacheService
@@ -44,7 +48,6 @@ from app.services.stripe_billing import (
     handle_subscription_deleted,
     handle_invoice_payment_failed,
 )
-from app.core.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -597,10 +600,14 @@ def create_reddit_campaign(
     - Returns campaign ID
     """
     discovery_service = RedditDiscoveryService()
-    
+
     # Generate search queries using LLM
     search_queries = discovery_service.generate_search_queries(payload.business_description)
-    
+
+    # Track LLM usage
+    llm_type = APIType.LLM_GEMINI if settings.llm_provider.lower() == "gemini" else APIType.LLM_OPENAI
+    track_api_call(db, current_user.id, llm_type)
+
     # Create campaign linked to current user
     campaign = RedditCampaign(
         user_id=current_user.id,
@@ -652,6 +659,10 @@ def discover_subreddits(
     discovery_service = RedditDiscoveryService()
     subreddits = discovery_service.discover_subreddits(search_queries)
 
+    # Track Reddit API usage
+    reddit_api_type = APIType.REDDIT_RAPIDAPI if settings.reddit_api_provider.lower() == "rapidapi" else APIType.REDDIT_APIFY
+    track_api_call(db, current_user.id, reddit_api_type)
+
     # Cache all discovered subreddits (before filtering/ranking)
     cache_service = SubredditCacheService()
     try:
@@ -662,6 +673,10 @@ def discover_subreddits(
 
     # Rank subreddits by relevance to business
     subreddits = discovery_service.rank_subreddits(subreddits, campaign.business_description)
+
+    # Track LLM usage for ranking
+    llm_type = APIType.LLM_GEMINI if settings.llm_provider.lower() == "gemini" else APIType.LLM_OPENAI
+    track_api_call(db, current_user.id, llm_type)
 
     # Convert to response format
     return [
@@ -751,26 +766,38 @@ def select_subreddits(
     ).count()
     logger.info(f"Campaign {campaign_id} activated with {saved_count} subreddits (added: {subreddits_added})")
 
-    # Auto-trigger first poll in background
-    def run_first_poll():
-        """Background task to run the first poll after campaign creation"""
-        from app.core.db import SessionLocal
-        from app.services.reddit.polling import RedditPollingService
+    # Auto-trigger first poll: use Celery in production, threading locally
+    try:
+        # Try to use Celery (production)
+        from app.workers.tasks import poll_campaign_first
+        poll_campaign_first.delay(campaign_id)
+        logger.info(f"Scheduled auto-first-poll for campaign {campaign_id} via Celery")
+    except Exception as e:
+        # Fallback to threading (local development without Celery)
+        logger.info(f"Celery not available, using threading for campaign {campaign_id}: {e}")
+        import threading
 
-        logger.info(f"Starting auto-first-poll for campaign {campaign_id}")
-        try:
-            bg_db = SessionLocal()
+        def run_first_poll_thread():
+            """Run first poll in a separate thread to avoid blocking the API"""
+            from app.core.db import SessionLocal
+            from app.services.reddit.polling import RedditPollingService
+
+            logger.info(f"Starting auto-first-poll for campaign {campaign_id} (in background thread)")
             try:
-                polling_service = RedditPollingService()
-                summary = polling_service.poll_campaign_immediately(bg_db, campaign_id)
-                logger.info(f"Auto-first-poll completed for campaign {campaign_id}: {summary}")
-            finally:
-                bg_db.close()
-        except Exception as e:
-            logger.error(f"Error in auto-first-poll for campaign {campaign_id}: {e}", exc_info=True)
+                bg_db = SessionLocal()
+                try:
+                    polling_service = RedditPollingService()
+                    summary = polling_service.poll_campaign_immediately(bg_db, campaign_id)
+                    logger.info(f"Auto-first-poll completed for campaign {campaign_id}: {summary}")
+                finally:
+                    bg_db.close()
+            except Exception as e:
+                logger.error(f"Error in auto-first-poll for campaign {campaign_id}: {e}", exc_info=True)
 
-    background_tasks.add_task(run_first_poll)
-    logger.info(f"Scheduled auto-first-poll for campaign {campaign_id}")
+        # Start in a daemon thread so it doesn't block server shutdown
+        poll_thread = threading.Thread(target=run_first_poll_thread, daemon=True)
+        poll_thread.start()
+        logger.info(f"Scheduled auto-first-poll for campaign {campaign_id} in background thread")
 
     return {"message": f"Campaign activated with {saved_count} subreddits", "first_poll_scheduled": True}
 
@@ -830,10 +857,12 @@ def get_reddit_campaign(
         RedditCampaignSubreddit.campaign_id == campaign_id
     ).count()
     
+    # Only count scored leads (relevancy_score IS NOT NULL)
     leads_count = db.query(RedditLead).filter(
-        RedditLead.campaign_id == campaign_id
+        RedditLead.campaign_id == campaign_id,
+        RedditLead.relevancy_score.isnot(None)
     ).count()
-    
+
     return RedditCampaignResponse(
         id=campaign.id,
         status=campaign.status.value,
@@ -1326,10 +1355,12 @@ def list_campaigns(
             RedditCampaignSubreddit.campaign_id == campaign.id
         ).count()
         
+        # Only count scored leads (relevancy_score IS NOT NULL)
         leads_count = db.query(RedditLead).filter(
-            RedditLead.campaign_id == campaign.id
+            RedditLead.campaign_id == campaign.id,
+            RedditLead.relevancy_score.isnot(None)
         ).count()
-        
+
         responses.append(RedditCampaignResponse(
             id=campaign.id,
             status=campaign.status.value,
@@ -1478,3 +1509,230 @@ async def stripe_webhook(
         return {"status": "error", "message": str(e)}
 
     return {"status": "success"}
+
+
+# ====== Usage Tracking Endpoints ======
+
+from app.services.usage_tracking import get_user_usage_summary, get_all_users_usage
+from app.models.tables import UserRole
+
+
+@router.get("/usage/me")
+def get_my_usage(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get current user's API usage stats.
+    Optional date filters: start_date and end_date in YYYY-MM-DD format.
+    """
+    from datetime import date
+
+    parsed_start = None
+    parsed_end = None
+
+    if start_date:
+        try:
+            parsed_start = date.fromisoformat(start_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD")
+
+    if end_date:
+        try:
+            parsed_end = date.fromisoformat(end_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD")
+
+    summary = get_user_usage_summary(db, current_user.id, parsed_start, parsed_end)
+
+    return {
+        "user_id": current_user.id,
+        "email": current_user.email,
+        "start_date": start_date,
+        "end_date": end_date,
+        "usage": summary
+    }
+
+
+@router.get("/admin/usage")
+def get_all_usage(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Admin endpoint: Get all users' API usage stats.
+    Requires admin role.
+    """
+    # Check admin role
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    from datetime import date
+
+    parsed_start = None
+    parsed_end = None
+
+    if start_date:
+        try:
+            parsed_start = date.fromisoformat(start_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD")
+
+    if end_date:
+        try:
+            parsed_end = date.fromisoformat(end_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD")
+
+    usage_data = get_all_users_usage(db, parsed_start, parsed_end)
+
+    # Enrich with user emails
+    for item in usage_data:
+        user = db.get(User, item["user_id"])
+        if user:
+            item["email"] = user.email
+
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "users": usage_data
+    }
+
+
+# ====== Plan Limits Endpoints ======
+
+from app.services.plan_usage import (
+    get_usage_status,
+    get_subreddit_limit_status,
+    check_can_create_profile,
+    check_can_add_subreddits,
+    check_subreddit_selection,
+)
+from app.core.plan_limits import get_plan_limits, get_tier_group
+
+
+@router.get("/plan/usage")
+def get_plan_usage(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get current user's plan usage status.
+    Returns profile count, limits, and whether user can create more profiles.
+    """
+    status = get_usage_status(db, current_user)
+
+    return {
+        "profile_count": status.profile_count,
+        "max_profiles": status.max_profiles,
+        "profiles_remaining": status.profiles_remaining,
+        "can_create_profile": status.can_create_profile,
+        "current_plan": status.current_plan,
+        "tier_group": status.tier_group,
+        "next_tier": status.next_tier,
+    }
+
+
+@router.get("/plan/limits")
+def get_plan_limits_info(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the limits for the user's current plan.
+    """
+    limits = get_plan_limits(current_user.subscription_tier)
+    tier_group = get_tier_group(current_user.subscription_tier)
+
+    return {
+        "plan_name": limits.plan_name,
+        "tier_group": tier_group,
+        "max_profiles": limits.max_profiles,
+        "max_subreddits_per_profile": limits.max_subreddits_per_profile,
+        "max_leads_per_month": limits.max_leads_per_month,
+        "polls_per_day": limits.polls_per_day,
+        "next_tier": limits.next_tier,
+    }
+
+
+@router.get("/plan/check-create-profile")
+def check_create_profile(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Check if user can create a new business profile.
+    Returns allowed status and upgrade info if limit reached.
+    """
+    result = check_can_create_profile(db, current_user)
+
+    return {
+        "allowed": result.allowed,
+        "reason": result.reason,
+        "current_count": result.current_count,
+        "max_count": result.max_count,
+        "upgrade_to": result.upgrade_to,
+        "current_plan": result.current_plan,
+    }
+
+
+@router.get("/plan/check-subreddit-limit/{campaign_id}")
+def check_subreddit_limit(
+    campaign_id: int,
+    count: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Check if user can select the specified number of subreddits for a campaign.
+
+    Args:
+        campaign_id: The campaign ID
+        count: Number of subreddits user wants to select
+    """
+    # Verify campaign belongs to user
+    campaign = db.get(RedditCampaign, campaign_id)
+    if not campaign or campaign.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    result = check_subreddit_selection(db, current_user, campaign_id, count)
+
+    return {
+        "allowed": result.allowed,
+        "reason": result.reason,
+        "selected_count": result.current_count,
+        "max_count": result.max_count,
+        "upgrade_to": result.upgrade_to,
+        "current_plan": result.current_plan,
+    }
+
+
+@router.get("/plan/campaign/{campaign_id}/subreddit-status")
+def get_campaign_subreddit_status(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the subreddit limit status for a specific campaign.
+    """
+    # Verify campaign belongs to user
+    campaign = db.get(RedditCampaign, campaign_id)
+    if not campaign or campaign.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    status = get_subreddit_limit_status(db, current_user, campaign_id)
+
+    return {
+        "current_count": status.current_count,
+        "max_count": status.max_count,
+        "can_add_more": status.can_add_more,
+        "remaining": status.remaining,
+        "current_plan": status.current_plan,
+        "tier_group": status.tier_group,
+        "next_tier": status.next_tier,
+    }

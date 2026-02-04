@@ -17,11 +17,14 @@ from app.models.tables import (
     RedditLeadStatus,
     GlobalSubredditPoll,
     RedditCampaignStatus,
-    User
+    User,
+    APIType
 )
 from app.providers.reddit.factory import get_reddit_provider
 from app.services.reddit.batch_scoring import BatchScoringService, AUTO_SUGGESTION_THRESHOLD
 from app.core.email import send_poll_summary_email
+from app.services.usage_tracking import track_api_call
+from app.core.config import settings
 
 
 logger = logging.getLogger(__name__)
@@ -120,6 +123,10 @@ class StreamingPollService:
                     all_posts.extend(new_posts)
                     subreddit_post_counts[sub.subreddit_name] = len(new_posts)
 
+                    # Track Reddit API usage
+                    reddit_api_type = APIType.REDDIT_RAPIDAPI if settings.reddit_api_provider.lower() == "rapidapi" else APIType.REDDIT_APIFY
+                    track_api_call(db, campaign.user_id, reddit_api_type)
+
                     yield {
                         "type": "progress",
                         "data": {
@@ -185,6 +192,14 @@ class StreamingPollService:
                 campaign.business_description,
                 on_progress=on_scoring_progress
             )
+
+            # Track LLM usage for scoring (actual number of batch calls made)
+            llm_calls = self.scoring_service.get_llm_calls_made()
+            if llm_calls > 0:
+                llm_type = APIType.LLM_GEMINI if settings.llm_provider.lower() == "gemini" else APIType.LLM_OPENAI
+                for _ in range(llm_calls):
+                    track_api_call(db, campaign.user_id, llm_type)
+                logger.info(f"Tracked {llm_calls} LLM calls for batch scoring")
 
             yield {
                 "type": "progress",

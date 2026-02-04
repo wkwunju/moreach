@@ -4,13 +4,36 @@ import { useState } from "react";
 import { User, getTrialDaysRemaining, isTrialActive } from "@/lib/auth";
 import { createCheckoutSession, createPortalSession } from "@/lib/api";
 
+type UpgradeReason = "profile_limit" | "subreddit_limit";
+
+interface UpgradeContext {
+  reason: UpgradeReason;
+  currentCount: number;
+  maxCount: number;
+  recommendedTier: string; // "GROWTH" or "PRO"
+}
+
 interface BillingDialogProps {
   isOpen: boolean;
   onClose: () => void;
   user: User | null;
+  upgradeContext?: UpgradeContext; // Optional upgrade prompt context
 }
 
-export default function BillingDialog({ isOpen, onClose, user }: BillingDialogProps) {
+const UPGRADE_MESSAGES = {
+  profile_limit: {
+    title: "Profile limit reached",
+    description: (current: number, max: number) =>
+      `You've used ${max} of ${max} profiles on your plan.`,
+  },
+  subreddit_limit: {
+    title: "Subreddit limit reached",
+    description: (current: number, max: number) =>
+      `You can monitor up to ${max} subreddits on your plan.`,
+  },
+};
+
+export default function BillingDialog({ isOpen, onClose, user, upgradeContext }: BillingDialogProps) {
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annually">("annually");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -199,18 +222,39 @@ export default function BillingDialog({ isOpen, onClose, user }: BillingDialogPr
         </button>
 
         <div className="p-6 md:p-8">
-          {/* Header */}
-          <div className="text-center mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">
-              {trialActive
-                ? `${trialDaysRemaining} day${trialDaysRemaining !== 1 ? "s" : ""} left in your free trial`
-                : isPaid
-                ? "Manage your subscription"
-                : currentTier === "EXPIRED" || (currentTier === "FREE_TRIAL" && !trialActive)
-                ? "Oops, your free trial has ended. Choose a plan to continue using moreach"
-                : "Choose a plan to continue using moreach"}
-            </h2>
-          </div>
+          {/* Header - Show upgrade context if present, otherwise show default */}
+          {upgradeContext ? (
+            <div className="flex items-center gap-3 mb-6 p-4 bg-orange-50 border border-orange-100 rounded-xl">
+              <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {UPGRADE_MESSAGES[upgradeContext.reason].title}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  {UPGRADE_MESSAGES[upgradeContext.reason].description(
+                    upgradeContext.currentCount,
+                    upgradeContext.maxCount
+                  )}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center mb-6">
+              <h2 className="text-xl font-semibold text-gray-900">
+                {trialActive
+                  ? `${trialDaysRemaining} day${trialDaysRemaining !== 1 ? "s" : ""} left in your free trial`
+                  : isPaid
+                  ? "Manage your subscription"
+                  : currentTier === "EXPIRED" || (currentTier === "FREE_TRIAL" && !trialActive)
+                  ? "Oops, your free trial has ended. Choose a plan to continue using moreach"
+                  : "Choose a plan to continue using moreach"}
+              </h2>
+            </div>
+          )}
 
           {/* Billing Period Toggle */}
           <div className="flex justify-center mb-6">
@@ -257,13 +301,19 @@ export default function BillingDialog({ isOpen, onClose, user }: BillingDialogPr
             {plans.map((plan) => {
               const currentPrice = billingPeriod === "monthly" ? plan.monthlyPrice : plan.annualPrice;
               const isCurrent = isCurrentPlan(plan.id);
+              const isRecommended = upgradeContext?.recommendedTier?.toUpperCase() === plan.id.toUpperCase();
 
               // Card styles based on plan type
-              const cardClasses = {
+              const baseCardClasses = {
                 starter: "bg-white border-2 border-orange-300 hover:border-orange-400",
                 growth: "bg-gradient-to-br from-orange-500 to-red-500 text-white",
                 pro: "bg-gray-900 text-white",
               }[plan.cardStyle];
+
+              // Add ring highlight for recommended plan
+              const cardClasses = isRecommended
+                ? `${baseCardClasses} ring-4 ring-orange-400 ring-offset-2`
+                : baseCardClasses;
 
               const isGrowth = plan.cardStyle === "growth";
               const isPro = plan.cardStyle === "pro";
@@ -281,15 +331,17 @@ export default function BillingDialog({ isOpen, onClose, user }: BillingDialogPr
                     }`}>
                       {plan.name}
                     </h3>
-                    {plan.badge && (
+                    {(plan.badge || isRecommended) && (
                       <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
-                        plan.badgeStyle === "orange"
+                        isRecommended
+                          ? "bg-orange-500 text-white"
+                          : plan.badgeStyle === "orange"
                           ? "bg-orange-100 text-orange-600"
                           : plan.badgeStyle === "white"
                           ? "bg-white/20 backdrop-blur-sm text-white"
                           : "bg-white/10 backdrop-blur-sm text-gray-300"
                       }`}>
-                        {plan.badge}
+                        {isRecommended ? "Recommended" : plan.badge}
                       </span>
                     )}
                   </div>

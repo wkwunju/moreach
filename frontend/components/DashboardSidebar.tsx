@@ -9,9 +9,11 @@ import BillingDialog from "./BillingDialog";
 
 interface SidebarProps {
   user?: User | null;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-export default function DashboardSidebar({ user }: SidebarProps) {
+export default function DashboardSidebar({ user, isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const [showBillingDialog, setShowBillingDialog] = useState(false);
 
@@ -59,13 +61,39 @@ export default function DashboardSidebar({ user }: SidebarProps) {
   ];
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 flex flex-col h-screen fixed left-0 top-0">
-      {/* Logo */}
-      <div className="h-16 flex items-center px-6 border-b border-gray-200">
-        <Link href="/" className="text-xl font-black text-gray-900">
-          moreach.ai
-        </Link>
-      </div>
+    <>
+      {/* Mobile backdrop */}
+      {isOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/50 z-40"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Sidebar */}
+      <div
+        className={`
+          w-64 bg-white border-r border-gray-200 flex flex-col h-screen fixed left-0 top-0 z-50
+          transition-transform duration-300 ease-in-out
+          lg:translate-x-0
+          ${isOpen ? "translate-x-0" : "-translate-x-full"}
+        `}
+      >
+        {/* Logo with close button on mobile */}
+        <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200">
+          <Link href="/" className="text-xl font-black text-gray-900">
+            moreach.ai
+          </Link>
+          {/* Close button - only on mobile */}
+          <button
+            onClick={onClose}
+            className="lg:hidden p-2 -mr-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
 
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto py-6">
@@ -83,6 +111,8 @@ export default function DashboardSidebar({ user }: SidebarProps) {
                   onClick={(e) => {
                     if (item.comingSoon) {
                       e.preventDefault();
+                    } else {
+                      onClose?.(); // Close sidebar on mobile when navigating
                     }
                   }}
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -131,7 +161,8 @@ export default function DashboardSidebar({ user }: SidebarProps) {
         onClose={() => setShowBillingDialog(false)}
         user={user ?? null}
       />
-    </div>
+      </div>
+    </>
   );
 }
 

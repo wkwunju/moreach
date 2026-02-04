@@ -15,6 +15,9 @@ import {
   generateLeadSuggestions,
   fetchCampaignSubreddits,
   deleteCampaign,
+  checkCanCreateProfile,
+  checkSubredditLimit,
+  getPlanLimits,
   type SSEEvent,
   type SSEProgressEvent,
   type SSELeadEvent,
@@ -26,6 +29,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import UserMenu from "@/components/UserMenu";
 import { getUser, logout, getTrialDaysRemaining, isTrialActive, type User } from "@/lib/auth";
 import BillingDialog from "@/components/BillingDialog";
+// UpgradeDialog replaced - now using BillingDialog with upgradeContext
 
 type Step = "campaigns" | "create" | "discover" | "leads";
 
@@ -437,7 +441,18 @@ function RedditPageContent() {
   // User info state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showBillingDialog, setShowBillingDialog] = useState(false);
-  const MAX_SUBREDDIT_SELECTION = 15;
+
+  // Upgrade context for BillingDialog (when showing upgrade prompts)
+  const [upgradeContext, setUpgradeContext] = useState<{
+    reason: "profile_limit" | "subreddit_limit";
+    currentCount: number;
+    maxCount: number;
+    recommendedTier: string;
+  } | undefined>(undefined);
+
+  // Plan limits - will be fetched from API
+  const [maxSubredditSelection, setMaxSubredditSelection] = useState(15);
+  const MAX_SUBREDDIT_SELECTION = maxSubredditSelection;
 
   // Ref to prevent double API calls in StrictMode
   const initPageCalledRef = useRef(false);
@@ -462,6 +477,15 @@ function RedditPageContent() {
     return 650; // SSR fallback
   });
   const [isResizing, setIsResizing] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  // Track desktop/mobile for responsive width
+  useEffect(() => {
+    const checkDesktop = () => setIsDesktop(window.innerWidth >= 1024);
+    checkDesktop();
+    window.addEventListener('resize', checkDesktop);
+    return () => window.removeEventListener('resize', checkDesktop);
+  }, []);
 
   // Helper to update URL without full navigation
   const updateURL = useCallback((newStep: Step, campaignId?: number) => {
@@ -485,6 +509,16 @@ function RedditPageContent() {
     async function initPage() {
       try {
         setLoading(true);
+
+        // Fetch plan limits first
+        try {
+          const limits = await getPlanLimits();
+          setMaxSubredditSelection(limits.max_subreddits_per_profile);
+        } catch (err) {
+          console.error("Failed to fetch plan limits:", err);
+          // Keep default of 15
+        }
+
         const data = await fetchRedditCampaigns();
         setCampaigns(data);
 
@@ -555,6 +589,29 @@ function RedditPageContent() {
       setError("Failed to load radars");
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Check if user can create a new profile and show upgrade dialog if not
+  async function handleNewRadarClick() {
+    try {
+      const result = await checkCanCreateProfile();
+      if (result.allowed) {
+        setStep("create");
+      } else {
+        // Show billing dialog with upgrade context
+        setUpgradeContext({
+          reason: "profile_limit",
+          currentCount: result.current_count,
+          maxCount: result.max_count,
+          recommendedTier: result.upgrade_to || "GROWTH",
+        });
+        setShowBillingDialog(true);
+      }
+    } catch (err) {
+      // If check fails, allow creation (fail open) and let backend handle it
+      console.error("Failed to check profile limit:", err);
+      setStep("create");
     }
   }
 
@@ -802,7 +859,23 @@ function RedditPageContent() {
     } else {
       // Enforce max selection limit
       if (newMap.size >= MAX_SUBREDDIT_SELECTION) {
-        return; // Don't add more if at limit
+        // Show billing dialog with upgrade context
+        const tier = currentUser?.subscription_tier || "FREE_TRIAL";
+        let recommendedTier = "GROWTH";
+        if (tier.includes("GROWTH")) {
+          recommendedTier = "PRO";
+        } else if (tier.includes("PRO")) {
+          // Already at max tier, still show dialog but no recommendation
+          recommendedTier = "PRO";
+        }
+        setUpgradeContext({
+          reason: "subreddit_limit",
+          currentCount: newMap.size + 1,
+          maxCount: MAX_SUBREDDIT_SELECTION,
+          recommendedTier,
+        });
+        setShowBillingDialog(true);
+        return;
       }
       newMap.set(subreddit.name, subreddit);
     }
@@ -938,18 +1011,18 @@ function RedditPageContent() {
               {step === "campaigns" && (
           <div>
             {/* Page Header Card */}
-            <div className="bg-white rounded-2xl p-8 mb-8 shadow-sm border border-gray-100">
-              <div className="flex items-center gap-4">
+            <div className="bg-white rounded-2xl p-4 sm:p-8 mb-6 sm:mb-8 shadow-sm border border-gray-100">
+              <div className="flex items-center gap-3 sm:gap-4">
                 {/* Reddit Logo */}
                 <img
                   src="https://www.redditstatic.com/desktop2x/img/favicon/android-icon-192x192.png"
                   alt="Reddit"
-                  className="w-12 h-12 flex-shrink-0"
+                  className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0"
                 />
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900">Reddit Lead Generation</h1>
-                  <p className="text-gray-500 mt-1 text-lg">
-                    AI-powered lead discovery from Reddit discussions
+                  <h1 className="text-xl sm:text-3xl font-bold text-gray-900">Reddit Lead Generation</h1>
+                  <p className="text-gray-500 mt-0.5 sm:mt-1 text-sm sm:text-lg">
+                    AI-powered lead discovery from Reddit
                   </p>
                 </div>
               </div>
@@ -958,23 +1031,23 @@ function RedditPageContent() {
             {/* Your Radars Section */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
               {/* Section Header */}
-              <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+              <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-100 flex flex-col sm:flex-row gap-3 sm:justify-between sm:items-center bg-gray-50/50">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gray-900 rounded-xl flex items-center justify-center">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 bg-gray-900 rounded-xl flex items-center justify-center">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
                   </div>
                   <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Your Radars</h2>
-                    <p className="text-sm text-gray-500">{campaigns.length} active radar{campaigns.length !== 1 ? 's' : ''}</p>
+                    <h2 className="text-base sm:text-lg font-semibold text-gray-900">Your Radars</h2>
+                    <p className="text-xs sm:text-sm text-gray-500">{campaigns.length} active radar{campaigns.length !== 1 ? 's' : ''}</p>
                   </div>
                 </div>
                 <button
-                  onClick={() => setStep("create")}
-                  className="px-5 py-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium flex items-center gap-2 shadow-sm"
+                  onClick={handleNewRadarClick}
+                  className="w-full sm:w-auto px-4 sm:px-5 py-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium flex items-center justify-center gap-2 shadow-sm text-sm sm:text-base"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
                   </svg>
                   New Radar
@@ -982,7 +1055,7 @@ function RedditPageContent() {
               </div>
 
               {/* Radars Content */}
-              <div className="p-6 pb-8">
+              <div className="p-4 sm:p-6 pb-6 sm:pb-8">
                 {loading ? (
                   <div className="text-center py-16">
                     <div className="inline-flex items-center gap-3 text-gray-500">
@@ -1003,7 +1076,7 @@ function RedditPageContent() {
                     <p className="text-gray-600 mb-2 font-medium">No radars yet</p>
                     <p className="text-gray-400 text-sm mb-6">Create your first radar to start discovering leads</p>
                     <button
-                      onClick={() => setStep("create")}
+                      onClick={handleNewRadarClick}
                       className="px-6 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium"
                     >
                       Create Your First Radar
@@ -1014,54 +1087,26 @@ function RedditPageContent() {
                     {campaigns.map((campaign) => (
                       <div
                         key={campaign.id}
-                        className="bg-white border border-gray-200 rounded-xl p-5 hover:border-gray-300 hover:shadow-md transition-all duration-200"
+                        className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 hover:border-gray-300 hover:shadow-md transition-all duration-200"
                       >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1 min-w-0">
-                            {/* Status Badge & Title Row */}
-                            <div className="flex items-center gap-3 mb-3">
-                              <span
-                                className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${
-                                  campaign.status === "ACTIVE"
-                                    ? "bg-emerald-100 text-emerald-700"
-                                    : campaign.status === "DISCOVERING"
-                                    ? "bg-gray-900 text-white"
-                                    : "bg-gray-100 text-gray-600"
-                                }`}
-                              >
-                                {campaign.status}
-                              </span>
-                            </div>
-
-                            {/* Business Description */}
-                            <h3 className="text-gray-900 font-semibold text-lg mb-3 truncate">
-                              {campaign.business_description}
-                            </h3>
-
-                            {/* Stats Row */}
-                            <div className="flex flex-wrap items-center gap-4 text-sm">
-                              <div className="flex items-center gap-2 text-gray-600 bg-gray-50 px-3 py-1.5 rounded-lg">
-                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                                </svg>
-                                <span className="font-medium">{campaign.subreddits_count}</span>
-                                <span className="text-gray-400">subreddits</span>
-                              </div>
-                              <div className="flex items-center gap-2 text-gray-600 bg-gray-50 px-3 py-1.5 rounded-lg">
-                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                </svg>
-                                <span className="font-medium">{campaign.leads_count}</span>
-                                <span className="text-gray-400">leads</span>
-                              </div>
-                            </div>
-                          </div>
-
+                        {/* Header: Status Badge + Actions */}
+                        <div className="flex justify-between items-center mb-3">
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${
+                              campaign.status === "ACTIVE"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : campaign.status === "DISCOVERING"
+                                ? "bg-gray-900 text-white"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {campaign.status}
+                          </span>
                           {/* Action Buttons */}
-                          <div className="flex gap-2 items-center ml-4 flex-shrink-0">
+                          <div className="flex gap-2 items-center flex-shrink-0">
                             <button
                               onClick={() => handleViewLeads(campaign)}
-                              className="px-5 py-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium text-sm"
+                              className="px-4 sm:px-5 py-2 sm:py-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium text-sm"
                             >
                               View Leads
                             </button>
@@ -1126,6 +1171,29 @@ function RedditPageContent() {
                                 </>
                               )}
                             </div>
+                          </div>
+                        </div>
+
+                        {/* Business Description - Full width on its own row */}
+                        <h3 className="text-gray-900 font-semibold text-base sm:text-lg mb-3 line-clamp-2">
+                          {campaign.business_description}
+                        </h3>
+
+                        {/* Stats Row */}
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm">
+                          <div className="flex items-center gap-2 text-gray-600 bg-gray-50 px-2.5 sm:px-3 py-1.5 rounded-lg">
+                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                            <span className="font-medium">{campaign.subreddits_count}</span>
+                            <span className="text-gray-400">subreddits</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-gray-600 bg-gray-50 px-2.5 sm:px-3 py-1.5 rounded-lg">
+                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                            <span className="font-medium">{campaign.leads_count}</span>
+                            <span className="text-gray-400">leads</span>
                           </div>
                         </div>
                       </div>
@@ -1281,7 +1349,30 @@ function RedditPageContent() {
                   <p className="text-gray-600">
                     Selected: {selectedSubreddits.size} / {MAX_SUBREDDIT_SELECTION} subreddits
                     {selectedSubreddits.size >= MAX_SUBREDDIT_SELECTION && (
-                      <span className="text-amber-600 ml-2">(max reached)</span>
+                      <span className="text-amber-600 ml-2">
+                        (max reached)
+                        <button
+                          onClick={() => {
+                            const tier = currentUser?.subscription_tier || "FREE_TRIAL";
+                            let recommendedTier = "GROWTH";
+                            if (tier.includes("GROWTH")) {
+                              recommendedTier = "PRO";
+                            } else if (tier.includes("PRO")) {
+                              recommendedTier = "PRO";
+                            }
+                            setUpgradeContext({
+                              reason: "subreddit_limit",
+                              currentCount: selectedSubreddits.size,
+                              maxCount: MAX_SUBREDDIT_SELECTION,
+                              recommendedTier,
+                            });
+                            setShowBillingDialog(true);
+                          }}
+                          className="text-orange-600 hover:text-orange-700 underline ml-1"
+                        >
+                          Upgrade for more
+                        </button>
+                      </span>
                     )}
                   </p>
                 </div>
@@ -1441,9 +1532,9 @@ function RedditPageContent() {
 
         {/* Step: View Leads - Inbox Style */}
         {step === "leads" && currentCampaign && (
-          <div className="fixed top-0 left-0 right-0 bottom-0 bg-white flex">
-            {/* Left Sidebar - Subreddit Filters */}
-            <div className="w-64 border-r bg-gray-50 flex flex-col">
+          <div className="fixed top-0 left-0 right-0 bottom-0 lg:left-64 bg-white flex">
+            {/* Left Sidebar - Subreddit Filters (hidden on mobile) */}
+            <div className="hidden lg:flex w-64 border-r bg-gray-50 flex-col">
               {/* Scrollable content area */}
               <div className="flex-1 overflow-y-auto pt-8 px-6 pb-6">
                 <button
@@ -1596,8 +1687,35 @@ function RedditPageContent() {
 
             {/* Center - Leads List */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Header */}
-              <div className="border-b px-6 pt-8 pb-4 flex items-center justify-between bg-white">
+              {/* Mobile Header with Back */}
+              <div className="lg:hidden border-b px-4 py-3 flex items-center gap-3 bg-white">
+                <button
+                  onClick={() => {
+                    setStep("campaigns");
+                    setLeads([]);
+                    setSelectedLead(null);
+                  }}
+                  className="p-1.5 -ml-1.5 text-gray-600 hover:text-gray-900"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <h2 className="text-lg font-bold flex-1">Inbox</h2>
+                {!isStreaming && (
+                  <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 text-green-700 rounded-lg border border-green-200">
+                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                    <span className="text-xs font-semibold">
+                      {leads.length > 0 ? Math.round(leads.reduce((acc, l) => {
+                        const score = l.relevancy_score || 0;
+                        return acc + (score <= 1 ? score * 100 : score);
+                      }, 0) / leads.length) : 0}%
+                    </span>
+                  </div>
+                )}
+              </div>
+              {/* Desktop Header */}
+              <div className="hidden lg:flex border-b px-6 pt-8 pb-4 items-center justify-between bg-white">
                 <div className="flex items-center gap-4">
                   {/* Sort Dropdown */}
                   <div className="relative">
@@ -1843,15 +1961,30 @@ function RedditPageContent() {
               </div>
             </div>
 
-            {/* Right Panel - Lead Details */}
+            {/* Right Panel - Lead Details (full screen overlay on mobile) */}
             {selectedLead && (
-              <div 
-                className="border-l bg-white overflow-y-auto relative"
-                style={{ width: `${detailPanelWidth}px` }}
-              >
-                {/* Resize Handle */}
+              <>
+                {/* Mobile backdrop */}
                 <div
-                  className={`absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-gray-900 transition-colors ${
+                  className="lg:hidden fixed inset-0 bg-black/30 z-40"
+                  onClick={() => setSelectedLead(null)}
+                />
+                <div
+                  className="fixed inset-0 top-14 lg:top-0 lg:relative lg:inset-auto lg:border-l bg-white overflow-y-auto z-50 lg:z-auto"
+                  style={isDesktop ? { width: `${detailPanelWidth}px` } : undefined}
+                >
+                {/* Mobile Close Button */}
+                <button
+                  onClick={() => setSelectedLead(null)}
+                  className="lg:hidden fixed top-4 right-4 z-10 p-2 bg-white rounded-full shadow-lg border border-gray-200"
+                >
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                {/* Resize Handle (hidden on mobile) */}
+                <div
+                  className={`hidden lg:block absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-gray-900 transition-colors ${
                     isResizing ? 'bg-gray-900' : 'bg-transparent'
                   }`}
                   onMouseDown={handleMouseDown}
@@ -2048,6 +2181,7 @@ function RedditPageContent() {
 
                 </div>
               </div>
+              </>
             )}
           </div>
         )}
@@ -2400,11 +2534,15 @@ function RedditPageContent() {
       )}
       </DashboardLayout>
 
-      {/* Billing Dialog */}
+      {/* Billing Dialog - also handles upgrade prompts via upgradeContext */}
       <BillingDialog
         isOpen={showBillingDialog}
-        onClose={() => setShowBillingDialog(false)}
+        onClose={() => {
+          setShowBillingDialog(false);
+          setUpgradeContext(undefined); // Clear upgrade context on close
+        }}
         user={currentUser}
+        upgradeContext={upgradeContext}
       />
     </ProtectedRoute>
   );

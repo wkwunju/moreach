@@ -631,16 +631,23 @@ function RedditPageContent() {
     }
   }
 
-  async function handleUpdateStatus(leadId: number, status: string) {
+  async function handleUpdateStatus(leadId: number, status: string): Promise<RedditLead[]> {
     try {
       await updateLeadStatus(leadId, status);
-      // Refresh leads
+      // Refresh leads and counts
       if (currentCampaign) {
         const data = await fetchRedditLeads(currentCampaign.id, filterStatus);
         setLeads(data.leads);
+        setLeadCounts({
+          new: data.new_leads,
+          contacted: data.contacted_leads
+        });
+        return data.leads;
       }
+      return [];
     } catch (err) {
       setError("Failed to update lead status");
+      return [];
     }
   }
 
@@ -648,18 +655,15 @@ function RedditPageContent() {
     try {
       // Copy suggested comment to clipboard
       await navigator.clipboard.writeText(lead.suggested_comment || '');
-      
-      // Update status to "Contacted"
-      await handleUpdateStatus(lead.id, "CONTACTED");
-      
+
       // Open Reddit post in new tab
       window.open(lead.post_url, '_blank');
-      
-      // 移除当前lead（因为它已经不在当前tab了）
-      setLeads(prevLeads => prevLeads.filter(l => l.id !== lead.id));
-      // 选择下一个lead
-      const nextLead = leads.find(l => l.id !== lead.id);
-      setSelectedLead(nextLead || null);
+
+      // Update status to "Contacted" - returns refreshed leads
+      const updatedLeads = await handleUpdateStatus(lead.id, "CONTACTED");
+
+      // Select first lead from updated list
+      setSelectedLead(getFirstSortedLead(updatedLeads, sortOrder));
     } catch (err) {
       setError("Failed to copy comment");
     }
@@ -669,19 +673,16 @@ function RedditPageContent() {
     try {
       // Copy suggested DM to clipboard
       await navigator.clipboard.writeText(lead.suggested_dm || '');
-      
-      // Update status to "Contacted"
-      await handleUpdateStatus(lead.id, "CONTACTED");
-      
+
       // Open Reddit user page in new tab
       const userPageUrl = `https://www.reddit.com/user/${lead.author}`;
       window.open(userPageUrl, '_blank');
-      
-      // 移除当前lead（因为它已经不在当前tab了）
-      setLeads(prevLeads => prevLeads.filter(l => l.id !== lead.id));
-      // 选择下一个lead
-      const nextLead = leads.find(l => l.id !== lead.id);
-      setSelectedLead(nextLead || null);
+
+      // Update status to "Contacted" - returns refreshed leads
+      const updatedLeads = await handleUpdateStatus(lead.id, "CONTACTED");
+
+      // Select first lead from updated list
+      setSelectedLead(getFirstSortedLead(updatedLeads, sortOrder));
     } catch (err) {
       setError("Failed to copy DM");
     }

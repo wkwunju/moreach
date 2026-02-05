@@ -1,7 +1,12 @@
 import logging
+import json
+import redis
+from datetime import datetime
 from sqlalchemy import select
+from typing import Optional
 
 from app.core.db import SessionLocal
+from app.core.config import settings
 from app.models.tables import Request, Influencer, RequestResult, RequestStatus
 from app.services.discovery.pipeline import DiscoveryPipeline
 from app.services.discovery.search import DiscoverySearch
@@ -10,6 +15,46 @@ from app.workers.celery_app import celery_app
 
 
 logger = logging.getLogger(__name__)
+
+# Redis client for task progress tracking
+_redis_client: Optional[redis.Redis] = None
+
+
+def get_redis_client() -> redis.Redis:
+    """Get or create Redis client for progress tracking"""
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis.from_url(settings.redis_url, decode_responses=True)
+    return _redis_client
+
+
+def get_poll_task_key(campaign_id: int) -> str:
+    """Get Redis key for poll task status"""
+    return f"poll_task:campaign:{campaign_id}"
+
+
+def set_poll_task_status(campaign_id: int, status: dict) -> None:
+    """Store poll task status in Redis"""
+    r = get_redis_client()
+    key = get_poll_task_key(campaign_id)
+    r.setex(key, 3600, json.dumps(status))  # Expire after 1 hour
+
+
+def get_poll_task_status(campaign_id: int) -> Optional[dict]:
+    """Get poll task status from Redis"""
+    r = get_redis_client()
+    key = get_poll_task_key(campaign_id)
+    data = r.get(key)
+    if data:
+        return json.loads(data)
+    return None
+
+
+def clear_poll_task_status(campaign_id: int) -> None:
+    """Clear poll task status from Redis"""
+    r = get_redis_client()
+    key = get_poll_task_key(campaign_id)
+    r.delete(key)
 
 
 @celery_app.task(name="app.workers.tasks.run_discovery")
@@ -277,6 +322,130 @@ def poll_campaign_first(campaign_id: int) -> dict:
 
     except Exception as e:
         logger.exception(f"First poll failed for campaign {campaign_id}")
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.workers.tasks.poll_campaign_background", bind=True)
+def poll_campaign_background(self, campaign_id: int) -> dict:
+    """
+    Background Celery task for polling a campaign.
+
+    Stores progress in Redis so frontend can poll for updates.
+    Continues running even if user closes the page.
+
+    Progress format:
+    {
+        "task_id": "...",
+        "status": "running" | "completed" | "failed",
+        "phase": "fetching" | "scoring" | "suggestions" | "saving",
+        "current": 5,
+        "total": 10,
+        "message": "Fetching posts from r/startups...",
+        "leads_created": 0,
+        "leads": [...],  # List of lead IDs created
+        "error": null
+    }
+    """
+    import asyncio
+    from app.services.reddit.streaming_poll import StreamingPollService
+
+    db = SessionLocal()
+    task_id = self.request.id
+
+    try:
+        logger.info(f"Starting background poll for campaign {campaign_id}, task_id={task_id}")
+
+        # Initialize status
+        set_poll_task_status(campaign_id, {
+            "task_id": task_id,
+            "status": "running",
+            "phase": "initializing",
+            "current": 0,
+            "total": 0,
+            "message": "Initializing polling...",
+            "leads_created": 0,
+            "leads": [],
+            "error": None,
+            "started_at": datetime.utcnow().isoformat()
+        })
+
+        service = StreamingPollService()
+        leads_created = []
+        final_result = {}
+
+        # Run the async generator synchronously
+        async def run_poll():
+            nonlocal leads_created, final_result
+
+            async for event in service.poll_campaign_streaming(db, campaign_id):
+                event_type = event["type"]
+                event_data = event["data"]
+
+                if event_type == "progress":
+                    set_poll_task_status(campaign_id, {
+                        "task_id": task_id,
+                        "status": "running",
+                        "phase": event_data.get("phase", "processing"),
+                        "current": event_data.get("current", 0),
+                        "total": event_data.get("total", 0),
+                        "message": event_data.get("message", ""),
+                        "leads_created": len(leads_created),
+                        "leads": leads_created,
+                        "error": None,
+                        "started_at": get_poll_task_status(campaign_id).get("started_at")
+                    })
+
+                elif event_type == "lead":
+                    leads_created.append(event_data.get("id"))
+                    current_status = get_poll_task_status(campaign_id) or {}
+                    set_poll_task_status(campaign_id, {
+                        **current_status,
+                        "leads_created": len(leads_created),
+                        "leads": leads_created,
+                    })
+
+                elif event_type == "complete":
+                    final_result = event_data
+
+                elif event_type == "error":
+                    raise Exception(event_data.get("message", "Unknown error"))
+
+        # Run the async function
+        asyncio.run(run_poll())
+
+        # Set final completed status
+        set_poll_task_status(campaign_id, {
+            "task_id": task_id,
+            "status": "completed",
+            "phase": "done",
+            "current": final_result.get("total_posts_fetched", 0),
+            "total": final_result.get("total_posts_fetched", 0),
+            "message": final_result.get("message", "Polling completed"),
+            "leads_created": final_result.get("total_leads", len(leads_created)),
+            "leads": leads_created,
+            "error": None,
+            "completed_at": datetime.utcnow().isoformat(),
+            "summary": final_result
+        })
+
+        logger.info(f"Background poll completed for campaign {campaign_id}: {len(leads_created)} leads")
+        return {"status": "completed", "leads_created": len(leads_created)}
+
+    except Exception as e:
+        logger.exception(f"Background poll failed for campaign {campaign_id}")
+
+        # Set error status
+        current_status = get_poll_task_status(campaign_id) or {}
+        set_poll_task_status(campaign_id, {
+            **current_status,
+            "task_id": task_id,
+            "status": "failed",
+            "error": str(e),
+            "failed_at": datetime.utcnow().isoformat()
+        })
+
         raise
     finally:
         db.close()

@@ -11,17 +11,18 @@ import {
   updateLeadStatus,
   pauseCampaign,
   resumeCampaign,
-  runCampaignNowStream,
+  runCampaignPoll,
   generateLeadSuggestions,
   fetchCampaignSubreddits,
   deleteCampaign,
   checkCanCreateProfile,
   checkSubredditLimit,
   getPlanLimits,
-  type SSEEvent,
+  getPollStatus,
   type SSEProgressEvent,
   type SSELeadEvent,
   type SSECompleteEvent,
+  type PollTaskStatus,
 } from "@/lib/api";
 import type { RedditCampaign, SubredditInfo, RedditLead } from "@/lib/types";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -522,6 +523,65 @@ function RedditPageContent() {
         const data = await fetchRedditCampaigns();
         setCampaigns(data);
 
+        // Check for any running poll tasks and resume progress display
+        for (const campaign of data) {
+          if (campaign.status === "ACTIVE") {
+            try {
+              const pollStatus = await getPollStatus(campaign.id);
+              if (pollStatus.status === "running") {
+                // Resume showing progress for this running task
+                setIsStreaming(true);
+                setStreamProgress({
+                  phase: pollStatus.phase as "fetching" | "scoring" | "suggestions",
+                  current: pollStatus.current,
+                  total: pollStatus.total,
+                  message: pollStatus.message,
+                });
+                // Start polling for updates
+                const cleanup = runCampaignPoll(
+                  campaign.id,
+                  (status: PollTaskStatus) => {
+                    setStreamProgress({
+                      phase: status.phase as "fetching" | "scoring" | "suggestions",
+                      current: status.current,
+                      total: status.total,
+                      message: status.message,
+                    });
+                    if (status.leads_created > 0) {
+                      setStreamingLeads(status.leads.map(id => ({
+                        id,
+                        title: "",
+                        relevancy_score: 0,
+                        subreddit_name: "",
+                        has_suggestions: false,
+                      })));
+                    }
+                  },
+                  (status: PollTaskStatus) => {
+                    const summary = status.summary || {
+                      total_leads: status.leads_created,
+                      total_posts_fetched: status.total,
+                      subreddits_polled: 0,
+                    };
+                    setStreamComplete(summary);
+                    setIsStreaming(false);
+                    // Refresh campaigns
+                    loadCampaigns();
+                  },
+                  (error: Error) => {
+                    setError(error.message || "Failed to run radar");
+                    setIsStreaming(false);
+                  }
+                );
+                break; // Only handle one running poll at a time
+              }
+            } catch (e) {
+              // Ignore errors when checking poll status
+              console.error("Error checking poll status:", e);
+            }
+          }
+        }
+
         // Restore state from URL params
         const view = searchParams.get("view") as Step | null;
         const campaignId = searchParams.get("id");
@@ -759,38 +819,51 @@ function RedditPageContent() {
   }
 
   async function handleRunNow(campaign: RedditCampaign) {
-    // Use streaming version for real-time progress
+    // Use background polling version - continues even if page is closed
     setIsStreaming(true);
     setStreamProgress(null);
     setStreamingLeads([]);
     setStreamComplete(null);
     setError("");
 
-    const cleanup = runCampaignNowStream(
+    const cleanup = runCampaignPoll(
       campaign.id,
-      (event: SSEEvent) => {
-        switch (event.type) {
-          case "progress":
-            setStreamProgress(event.data);
-            break;
-          case "lead":
-            setStreamingLeads((prev) => [...prev, event.data]);
-            break;
-          case "complete":
-            setStreamComplete(event.data);
-            setIsStreaming(false);
-            // Refresh campaigns and leads
-            loadCampaigns();
-            if (currentCampaign?.id === campaign.id) {
-              handleViewLeads(campaign);
-            }
-            break;
-          case "error":
-            setError(event.data.message || "Streaming failed");
-            setIsStreaming(false);
-            break;
+      // onProgress
+      (status: PollTaskStatus) => {
+        setStreamProgress({
+          phase: status.phase as "fetching" | "scoring" | "suggestions",
+          current: status.current,
+          total: status.total,
+          message: status.message,
+        });
+        // Update leads count from status
+        if (status.leads_created > 0) {
+          // Create minimal lead events from the IDs we have
+          setStreamingLeads(status.leads.map(id => ({
+            id,
+            title: "",
+            relevancy_score: 0,
+            subreddit_name: "",
+            has_suggestions: false,
+          })));
         }
       },
+      // onComplete
+      (status: PollTaskStatus) => {
+        const summary = status.summary || {
+          total_leads: status.leads_created,
+          total_posts_fetched: status.total,
+          subreddits_polled: 0,
+        };
+        setStreamComplete(summary);
+        setIsStreaming(false);
+        // Refresh campaigns and leads
+        loadCampaigns();
+        if (currentCampaign?.id === campaign.id) {
+          handleViewLeads(campaign);
+        }
+      },
+      // onError
       (error: Error) => {
         setError(error.message || "Failed to run radar");
         setIsStreaming(false);

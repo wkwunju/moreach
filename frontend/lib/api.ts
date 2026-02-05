@@ -280,6 +280,129 @@ export function runCampaignNowStream(
   return () => controller.abort();
 }
 
+// ======= Background Polling API =======
+
+export interface PollTaskStatus {
+  task_id: string | null;
+  status: "running" | "completed" | "failed" | null;
+  phase: string;
+  current: number;
+  total: number;
+  message: string;
+  leads_created: number;
+  leads: number[];
+  error: string | null;
+  started_at?: string;
+  completed_at?: string;
+  summary?: SSECompleteEvent;
+}
+
+/**
+ * Start a background poll task for a campaign
+ * Returns immediately with task_id - use getPollStatus to check progress
+ */
+export async function startPollAsync(campaignId: number): Promise<{
+  message: string;
+  task_id: string;
+  already_running: boolean;
+}> {
+  const response = await authFetch(`${baseUrl}/api/v1/reddit/campaigns/${campaignId}/poll-async`, {
+    method: "POST"
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to start poll" }));
+    throw new Error(error.detail || "Failed to start poll");
+  }
+
+  return response.json();
+}
+
+/**
+ * Get the status of a running or completed poll task
+ */
+export async function getPollStatus(campaignId: number): Promise<PollTaskStatus> {
+  const response = await authFetch(`${baseUrl}/api/v1/reddit/campaigns/${campaignId}/poll-status`);
+
+  if (!response.ok) {
+    throw new Error("Failed to get poll status");
+  }
+
+  return response.json();
+}
+
+/**
+ * Run campaign poll with automatic polling for updates
+ * Starts a background task and polls for status updates
+ *
+ * @param campaignId - The campaign to poll
+ * @param onProgress - Callback for progress updates
+ * @param onComplete - Callback when polling completes
+ * @param onError - Callback for errors
+ * @param pollInterval - How often to check status (ms), default 3000
+ * @returns Cleanup function to stop polling
+ */
+export function runCampaignPoll(
+  campaignId: number,
+  onProgress: (status: PollTaskStatus) => void,
+  onComplete: (status: PollTaskStatus) => void,
+  onError: (error: Error) => void,
+  pollInterval: number = 3000
+): () => void {
+  let stopped = false;
+  let intervalId: NodeJS.Timeout | null = null;
+
+  const checkStatus = async () => {
+    if (stopped) return;
+
+    try {
+      const status = await getPollStatus(campaignId);
+
+      if (stopped) return;
+
+      if (status.status === "running") {
+        onProgress(status);
+      } else if (status.status === "completed") {
+        onComplete(status);
+        stop();
+      } else if (status.status === "failed") {
+        onError(new Error(status.error || "Poll failed"));
+        stop();
+      }
+    } catch (error) {
+      if (!stopped) {
+        onError(error as Error);
+        stop();
+      }
+    }
+  };
+
+  const stop = () => {
+    stopped = true;
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+  };
+
+  // Start the background task
+  startPollAsync(campaignId)
+    .then((result) => {
+      if (stopped) return;
+
+      // Start polling for status updates
+      checkStatus(); // Check immediately
+      intervalId = setInterval(checkStatus, pollInterval);
+    })
+    .catch((error) => {
+      if (!stopped) {
+        onError(error);
+      }
+    });
+
+  return stop;
+}
+
 /**
  * Generate suggestions on-demand for a lead
  */

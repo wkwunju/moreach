@@ -1188,6 +1188,95 @@ def run_campaign_now(
         raise HTTPException(status_code=500, detail=f"Failed to run campaign: {str(e)}")
 
 
+@router.post("/reddit/campaigns/{campaign_id}/poll-async")
+def start_poll_async(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Start a background poll task for a campaign.
+
+    Returns immediately with a task_id. Use the poll-status endpoint
+    to check progress. The task continues running even if the page is closed.
+    """
+    from app.workers.tasks import poll_campaign_background, get_poll_task_status
+
+    campaign = db.get(RedditCampaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    if campaign.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this campaign")
+
+    if campaign.status != RedditCampaignStatus.ACTIVE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Campaign must be ACTIVE to run. Current status: {campaign.status}"
+        )
+
+    # Check if a poll is already running for this campaign
+    existing_status = get_poll_task_status(campaign_id)
+    if existing_status and existing_status.get("status") == "running":
+        return {
+            "message": "Poll already in progress",
+            "task_id": existing_status.get("task_id"),
+            "already_running": True
+        }
+
+    # Start the background task
+    try:
+        task = poll_campaign_background.delay(campaign_id)
+        logger.info(f"Started background poll for campaign {campaign_id}, task_id={task.id}")
+
+        return {
+            "message": "Poll started",
+            "task_id": task.id,
+            "already_running": False
+        }
+    except Exception as e:
+        logger.error(f"Failed to start background poll for campaign {campaign_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start poll: {str(e)}")
+
+
+@router.get("/reddit/campaigns/{campaign_id}/poll-status")
+def get_poll_status(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get the status of a running or completed poll task.
+
+    Returns progress information including:
+    - status: "running" | "completed" | "failed" | null (no task)
+    - phase: Current phase of polling
+    - current/total: Progress numbers
+    - message: Human-readable status message
+    - leads_created: Number of leads created so far
+    - leads: List of lead IDs created
+    - error: Error message if failed
+    """
+    from app.workers.tasks import get_poll_task_status
+
+    campaign = db.get(RedditCampaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    if campaign.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this campaign")
+
+    status = get_poll_task_status(campaign_id)
+
+    if not status:
+        return {
+            "status": None,
+            "message": "No active or recent poll task"
+        }
+
+    return status
+
+
 @router.get("/reddit/campaigns/{campaign_id}/run-now/stream")
 async def run_campaign_stream(
     campaign_id: int,

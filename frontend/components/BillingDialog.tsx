@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import ReactDOM from "react-dom";
 import { User, getTrialDaysRemaining, isTrialActive } from "@/lib/auth";
 import { createCheckoutSession, createPortalSession } from "@/lib/api";
 
@@ -37,8 +38,13 @@ export default function BillingDialog({ isOpen, onClose, user, upgradeContext }:
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annually">("annually");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
-  if (!isOpen || !user) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!isOpen || !user || !mounted) return null;
 
   const trialDaysRemaining = getTrialDaysRemaining(user);
   const trialActive = isTrialActive(user);
@@ -201,8 +207,8 @@ export default function BillingDialog({ isOpen, onClose, user, upgradeContext }:
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  const dialogContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
@@ -502,4 +508,7 @@ export default function BillingDialog({ isOpen, onClose, user, upgradeContext }:
       </div>
     </div>
   );
+
+  // Use portal to render outside of any transformed parent
+  return ReactDOM.createPortal(dialogContent, document.body);
 }

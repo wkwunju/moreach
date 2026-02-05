@@ -155,13 +155,14 @@ export default function DashboardSidebar({ user, isOpen = false, onClose }: Side
         />
       </div>
 
-      {/* Billing Dialog */}
+      </div>
+
+      {/* Billing Dialog - outside sidebar to avoid transform issues */}
       <BillingDialog
         isOpen={showBillingDialog}
         onClose={() => setShowBillingDialog(false)}
         user={user ?? null}
       />
-      </div>
     </>
   );
 }

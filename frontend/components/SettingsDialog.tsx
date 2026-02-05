@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import ReactDOM from "react-dom";
 import { User } from "@/lib/auth";
 import { updateProfile, ProfileUpdateData } from "@/lib/api";
 
@@ -42,6 +43,11 @@ export default function SettingsDialog({ isOpen, onClose, user, onUpdate }: Sett
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Initialize form with user data when dialog opens
   useEffect(() => {
@@ -58,7 +64,7 @@ export default function SettingsDialog({ isOpen, onClose, user, onUpdate }: Sett
     }
   }, [isOpen, user]);
 
-  if (!isOpen || !user) return null;
+  if (!isOpen || !user || !mounted) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,8 +97,8 @@ export default function SettingsDialog({ isOpen, onClose, user, onUpdate }: Sett
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+  const dialogContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
@@ -257,4 +263,7 @@ export default function SettingsDialog({ isOpen, onClose, user, onUpdate }: Sett
       </div>
     </div>
   );
+
+  // Use portal to render outside of any transformed parent
+  return ReactDOM.createPortal(dialogContent, document.body);
 }

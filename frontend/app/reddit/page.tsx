@@ -996,7 +996,7 @@ function RedditPageContent() {
 
   return (
     <ProtectedRoute>
-      <DashboardLayout>
+      <DashboardLayout hideSidebar={step === "leads"}>
         {/* Wrapper for non-leads views */}
         {step !== "leads" && (
           <div className="p-8">

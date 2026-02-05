@@ -19,9 +19,10 @@ export const useSidebar = () => useContext(SidebarContext);
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
+  hideSidebar?: boolean;
 }
 
-export default function DashboardLayout({ children }: DashboardLayoutProps) {
+export default function DashboardLayout({ children, hideSidebar = false }: DashboardLayoutProps) {
   const [user, setUser] = useState<User | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -60,6 +61,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   useEffect(() => {
     setSidebarOpen(false);
   }, []);
+
+  // When sidebar is hidden, render children directly without the layout wrapper
+  if (hideSidebar) {
+    return (
+      <div className="h-screen bg-gray-50">
+        {children}
+      </div>
+    );
+  }
 
   return (
     <SidebarContext.Provider value={{ isOpen: sidebarOpen, setIsOpen: setSidebarOpen }}>

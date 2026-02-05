@@ -1532,7 +1532,7 @@ function RedditPageContent() {
 
         {/* Step: View Leads - Inbox Style */}
         {step === "leads" && currentCampaign && (
-          <div className="fixed top-0 left-0 right-0 bottom-0 lg:left-64 bg-white flex">
+          <div className="fixed inset-0 bg-white flex">
             {/* Left Sidebar - Subreddit Filters (hidden on mobile) */}
             <div className="hidden lg:flex w-64 border-r bg-gray-50 flex-col">
               {/* Scrollable content area */}

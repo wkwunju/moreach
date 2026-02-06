@@ -1,8 +1,8 @@
 from celery import Celery
-from celery.schedules import crontab
 
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.workers.celery_beat_config import CELERY_BEAT_SCHEDULE
 
 
 setup_logging()
@@ -14,16 +14,6 @@ celery_app = Celery(
 )
 celery_app.conf.task_routes = {"app.workers.tasks.*": {"queue": "celery"}}
 
-# Configure Celery Beat for periodic tasks
-celery_app.conf.beat_schedule = {
-    # Reddit Lead Generation: Poll every 6 hours
-    "poll-reddit-leads": {
-        "task": "app.workers.tasks.poll_reddit_leads",
-        "schedule": 3600 * 6,  # 6 hours in seconds
-    },
-    # Alternative: Use crontab for specific times
-    # "poll-reddit-leads": {
-    #     "task": "app.workers.tasks.poll_reddit_leads",
-    #     "schedule": crontab(hour="*/6", minute=0),  # Every 6 hours on the hour
-    # },
-}
+# Use tier-based schedule from celery_beat_config
+# Runs poll_reddit_scheduled every hour, which checks user tiers
+celery_app.conf.beat_schedule = CELERY_BEAT_SCHEDULE

@@ -255,6 +255,7 @@ class StreamingPollService:
             # ============================================
             leads_created = 0
             relevancy_distribution = {"90+": 0, "80-89": 0, "70-79": 0, "60-69": 0, "50-59": 0}
+            saved_leads = []  # Track saved leads for email
 
             for scored_post in relevant_posts:
                 try:
@@ -281,7 +282,7 @@ class StreamingPollService:
 
                     leads_created += 1
 
-                    # Track distribution
+                    # Track distribution and save lead data for email
                     score = scored_post["relevancy_score"]
                     if score >= 90:
                         relevancy_distribution["90+"] += 1
@@ -293,6 +294,14 @@ class StreamingPollService:
                         relevancy_distribution["60-69"] += 1
                     else:
                         relevancy_distribution["50-59"] += 1
+
+                    # Save lead data for email (top leads)
+                    saved_leads.append({
+                        "title": lead.title,
+                        "subreddit_name": lead.subreddit_name,
+                        "relevancy_score": lead.relevancy_score,
+                        "post_url": lead.post_url
+                    })
 
                     # Yield lead event
                     yield {
@@ -325,14 +334,18 @@ class StreamingPollService:
                 # Get user email
                 user = db.get(User, campaign.user_id)
                 if user and user.email:
+                    # Sort leads by score and get top 10
+                    top_leads = sorted(saved_leads, key=lambda x: -x["relevancy_score"])[:10]
+                    high_quality_count = relevancy_distribution.get("90+", 0) + relevancy_distribution.get("80-89", 0)
+
                     await asyncio.to_thread(
                         send_poll_summary_email,
                         to_email=user.email,
                         campaign_name=campaign.business_description[:100],
                         total_posts_fetched=len(all_posts),
                         total_leads_created=leads_created,
-                        subreddit_distribution=subreddit_post_counts,
-                        relevancy_distribution=relevancy_distribution,
+                        high_quality_count=high_quality_count,
+                        top_leads=top_leads,
                         campaign_id=campaign_id
                     )
                     logger.info(f"Sent poll summary email to {user.email}")

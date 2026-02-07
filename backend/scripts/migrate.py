@@ -94,10 +94,35 @@ def run_migrations():
 
             elif has_tables and not has_alembic:
                 logger.info("Existing database detected without migration tracking.")
-                logger.info("Stamping database as baseline (0001)...")
-                command.stamp(config, "0001")
-                logger.info("Running pending migrations after baseline...")
-                command.upgrade(config, "head")
+
+                # Check what actually exists to determine correct stamp point
+                result = conn.execute(text(
+                    "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'usage_tracking')"
+                ))
+                has_usage_tracking = result.scalar()
+
+                result = conn.execute(text(
+                    "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'is_blocked')"
+                ))
+                has_is_blocked = result.scalar()
+
+                logger.info(f"  - usage_tracking table exists: {has_usage_tracking}")
+                logger.info(f"  - is_blocked column exists: {has_is_blocked}")
+
+                if has_is_blocked:
+                    # All migrations already applied via create_all
+                    logger.info("Schema is complete. Stamping at head (0003)...")
+                    command.stamp(config, "0003")
+                elif has_usage_tracking:
+                    # Has 0002, needs 0003
+                    logger.info("Stamping at 0002, then upgrading...")
+                    command.stamp(config, "0002")
+                    command.upgrade(config, "head")
+                else:
+                    # Only has base tables
+                    logger.info("Stamping at 0001, then upgrading...")
+                    command.stamp(config, "0001")
+                    command.upgrade(config, "head")
 
             else:
                 logger.info("Fresh database detected. Running all migrations...")

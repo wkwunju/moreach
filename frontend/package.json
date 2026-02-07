@@ -12,6 +12,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@vercel/analytics": "^1.6.1",
     "cobe": "^0.6.5",
     "d3-geo": "^3.1.1",
     "next": "14.2.6",

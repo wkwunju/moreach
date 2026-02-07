@@ -138,6 +138,13 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             detail="Incorrect email or password"
         )
 
+    # Check if user is blocked (use generic error to not reveal blocked status)
+    if user.is_blocked:
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect email or password"
+        )
+
     if not user.is_active:
         raise HTTPException(
             status_code=403,
@@ -306,6 +313,13 @@ def google_auth(payload: GoogleAuthRequest, db: Session = Depends(get_db)):
     ).first()
 
     if user:
+        # Check if user is blocked (use generic error)
+        if user.is_blocked:
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication failed"
+            )
+
         # Link Google account if not already linked
         if not user.google_id:
             user.google_id = google_id
@@ -447,6 +461,12 @@ def google_auth_callback(code: str, db: Session = Depends(get_db)):
     ).first()
 
     if user:
+        # Check if user is blocked (use generic error)
+        if user.is_blocked:
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}/login?error=auth_failed"
+            )
+
         # Link Google account if not already linked
         if not user.google_id:
             user.google_id = google_id

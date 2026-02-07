@@ -70,6 +70,7 @@ class User(Base):
     # Account status
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.USER)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)  # Block problematic users
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     profile_completed: Mapped[bool] = mapped_column(Boolean, default=False)  # For OAuth users to complete profile
 

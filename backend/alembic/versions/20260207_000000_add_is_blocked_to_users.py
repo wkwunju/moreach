@@ -1,7 +1,7 @@
 """Add is_blocked field to users table
 
-Revision ID: 20260207_000000
-Revises: 20260204_000000
+Revision ID: 0003
+Revises: 0002
 Create Date: 2026-02-07
 
 """
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '20260207_000000'
-down_revision = '20260204_000000'
+revision = '0003'
+down_revision = '0002'
 branch_labels = None
 depends_on = None
 

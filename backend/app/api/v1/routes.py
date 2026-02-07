@@ -1191,6 +1191,7 @@ def run_campaign_now(
 @router.post("/reddit/campaigns/{campaign_id}/poll-async")
 def start_poll_async(
     campaign_id: int,
+    force: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -1199,8 +1200,11 @@ def start_poll_async(
 
     Returns immediately with a task_id. Use the poll-status endpoint
     to check progress. The task continues running even if the page is closed.
+
+    Args:
+        force: If True, clears any existing stuck task status and starts fresh
     """
-    from app.workers.tasks import poll_campaign_background, get_poll_task_status
+    from app.workers.tasks import poll_campaign_background, get_poll_task_status, clear_poll_task_status
 
     campaign = db.get(RedditCampaign, campaign_id)
     if not campaign:
@@ -1218,11 +1222,16 @@ def start_poll_async(
     # Check if a poll is already running for this campaign
     existing_status = get_poll_task_status(campaign_id)
     if existing_status and existing_status.get("status") == "running":
-        return {
-            "message": "Poll already in progress",
-            "task_id": existing_status.get("task_id"),
-            "already_running": True
-        }
+        if force:
+            # Clear the stuck status
+            logger.info(f"Force clearing stuck poll status for campaign {campaign_id}")
+            clear_poll_task_status(campaign_id)
+        else:
+            return {
+                "message": "Poll already in progress",
+                "task_id": existing_status.get("task_id"),
+                "already_running": True
+            }
 
     # Start the background task
     try:

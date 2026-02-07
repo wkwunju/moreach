@@ -300,13 +300,20 @@ export interface PollTaskStatus {
 /**
  * Start a background poll task for a campaign
  * Returns immediately with task_id - use getPollStatus to check progress
+ *
+ * @param campaignId - The campaign to poll
+ * @param force - If true, clears any stuck task status and starts fresh
  */
-export async function startPollAsync(campaignId: number): Promise<{
+export async function startPollAsync(campaignId: number, force: boolean = false): Promise<{
   message: string;
   task_id: string;
   already_running: boolean;
 }> {
-  const response = await authFetch(`${baseUrl}/api/v1/reddit/campaigns/${campaignId}/poll-async`, {
+  const url = force
+    ? `${baseUrl}/api/v1/reddit/campaigns/${campaignId}/poll-async?force=true`
+    : `${baseUrl}/api/v1/reddit/campaigns/${campaignId}/poll-async`;
+
+  const response = await authFetch(url, {
     method: "POST"
   });
 
@@ -340,6 +347,7 @@ export async function getPollStatus(campaignId: number): Promise<PollTaskStatus>
  * @param onComplete - Callback when polling completes
  * @param onError - Callback for errors
  * @param pollInterval - How often to check status (ms), default 3000
+ * @param force - If true, clears any stuck task status and starts fresh
  * @returns Cleanup function to stop polling
  */
 export function runCampaignPoll(
@@ -347,7 +355,8 @@ export function runCampaignPoll(
   onProgress: (status: PollTaskStatus) => void,
   onComplete: (status: PollTaskStatus) => void,
   onError: (error: Error) => void,
-  pollInterval: number = 3000
+  pollInterval: number = 3000,
+  force: boolean = false
 ): () => void {
   let stopped = false;
   let intervalId: NodeJS.Timeout | null = null;
@@ -386,7 +395,7 @@ export function runCampaignPoll(
   };
 
   // Start the background task
-  startPollAsync(campaignId)
+  startPollAsync(campaignId, force)
     .then((result) => {
       if (stopped) return;
 

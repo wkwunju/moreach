@@ -17,35 +17,35 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-def ensure_is_blocked_column():
-    """Fallback: ensure is_blocked column exists in users table."""
+def ensure_schema_updates():
+    """Ensure required schema updates exist (replaces complex migrations)."""
     try:
-        inspector = inspect(engine)
-        columns = [col['name'] for col in inspector.get_columns('users')]
-        if 'is_blocked' not in columns:
-            logger.warning("is_blocked column missing, adding it now...")
-            with engine.connect() as conn:
+        with engine.connect() as conn:
+            # Check and add is_blocked column if missing
+            result = conn.execute(text("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'users' AND column_name = 'is_blocked'
+            """))
+            if not result.fetchone():
+                logger.info("Adding is_blocked column to users table...")
                 conn.execute(text(
                     "ALTER TABLE users ADD COLUMN is_blocked BOOLEAN NOT NULL DEFAULT false"
                 ))
                 conn.commit()
-            logger.info("is_blocked column added successfully")
-        else:
-            logger.info("is_blocked column already exists")
+                logger.info("is_blocked column added successfully")
+            else:
+                logger.info("Schema is up to date")
     except Exception as e:
-        logger.error(f"Error checking/adding is_blocked column: {e}")
+        logger.error(f"Error ensuring schema updates: {e}")
 
 
-# Database initialization strategy:
-# - USE_ALEMBIC=true: Skip create_all, rely on Alembic migrations (production)
-# - USE_ALEMBIC=false or not set: Use create_all (local development)
-if os.getenv("USE_ALEMBIC", "false").lower() == "true":
-    logger.info("USE_ALEMBIC=true, skipping create_all(). Run 'alembic upgrade head' to apply migrations.")
-    # Fallback: ensure critical columns exist even if migration failed
-    ensure_is_blocked_column()
-else:
-    logger.info("Using create_all() for database initialization (set USE_ALEMBIC=true for Alembic)")
+# Database initialization
+if os.getenv("USE_ALEMBIC", "false").lower() != "true":
+    logger.info("Running create_all() for database initialization")
     Base.metadata.create_all(bind=engine)
+
+# Always ensure schema is up to date (handles missing columns)
+ensure_schema_updates()
 
 app = FastAPI(title=settings.app_name)
 

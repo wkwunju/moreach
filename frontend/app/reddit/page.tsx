@@ -1836,7 +1836,7 @@ function RedditPageContent() {
                   </div>
 
                   {/* Run Now Button - hidden in production via env var */}
-                  {process.env.NEXT_PUBLIC_SHOW_FETCH_LEADS_BUTTON !== 'false' && currentCampaign && currentCampaign.status === "ACTIVE" && (
+                  {currentUser?.id === 1 && currentCampaign && currentCampaign.status === "ACTIVE" && (
                     <button
                       onClick={() => handleRunNow(currentCampaign)}
                       disabled={loading}
@@ -1887,7 +1887,7 @@ function RedditPageContent() {
                     <p className="text-sm text-gray-400 mt-2">
                       Try changing filters or wait for the next polling cycle
                     </p>
-                    {process.env.NEXT_PUBLIC_SHOW_FETCH_LEADS_BUTTON !== 'false' && currentCampaign && currentCampaign.status === "ACTIVE" && (
+                    {currentUser?.id === 1 && currentCampaign && currentCampaign.status === "ACTIVE" && (
                       <button
                         onClick={() => handleRunNow(currentCampaign)}
                         disabled={loading}

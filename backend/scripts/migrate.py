@@ -46,14 +46,23 @@ def get_alembic_config():
 def run_migrations():
     """
     Run database migrations with advisory lock.
-    All checks and migrations happen within a single locked connection.
+    Uses pg_try_advisory_lock - if another instance holds the lock, skip and let app start.
     """
     config = get_alembic_config()
 
     with engine.connect() as conn:
-        # Acquire advisory lock - blocks until available
-        logger.info("Acquiring migration lock...")
-        conn.execute(text(f"SELECT pg_advisory_lock({MIGRATION_LOCK_ID})"))
+        # Try to acquire lock - non-blocking
+        result = conn.execute(text(f"SELECT pg_try_advisory_lock({MIGRATION_LOCK_ID})"))
+        got_lock = result.scalar()
+
+        if not got_lock:
+            logger.info("Another instance is running migrations. Waiting for completion...")
+            # Wait for the lock (meaning other migration finished)
+            conn.execute(text(f"SELECT pg_advisory_lock({MIGRATION_LOCK_ID})"))
+            conn.execute(text(f"SELECT pg_advisory_unlock({MIGRATION_LOCK_ID})"))
+            logger.info("Other migration completed. Proceeding to start app.")
+            return
+
         logger.info("Migration lock acquired.")
 
         try:

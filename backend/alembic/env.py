@@ -1,21 +1,16 @@
 """
 Alembic environment configuration.
 This file configures Alembic to use our SQLAlchemy models and database settings.
-
-Uses PostgreSQL advisory locks to prevent concurrent migrations.
 """
 import os
 import sys
 import logging
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool, text
+from sqlalchemy import engine_from_config, pool
 from alembic import context
 
 logger = logging.getLogger("alembic.env")
-
-# Advisory lock ID for migrations (must match migrate.py)
-MIGRATION_LOCK_ID = 123456789
 
 # Add the backend directory to the path so we can import our app modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -68,8 +63,7 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode.
 
-    In this scenario we need to create an Engine and associate a connection with the context.
-    Uses pg_advisory_lock to prevent concurrent migrations.
+    Locking is handled by scripts/migrate.py wrapper.
     """
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
@@ -78,24 +72,13 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        # Acquire advisory lock - this will BLOCK until lock is available
-        # pg_advisory_lock is session-level and will be held until connection closes
-        logger.info("Acquiring migration lock (will wait if another migration is running)...")
-        connection.execute(text(f"SELECT pg_advisory_lock({MIGRATION_LOCK_ID})"))
-        logger.info("Migration lock acquired at connection level.")
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+        )
 
-        try:
-            context.configure(
-                connection=connection,
-                target_metadata=target_metadata,
-            )
-
-            with context.begin_transaction():
-                context.run_migrations()
-        finally:
-            # Release the lock explicitly (also released when connection closes)
-            connection.execute(text(f"SELECT pg_advisory_unlock({MIGRATION_LOCK_ID})"))
-            logger.info("Migration lock released.")
+        with context.begin_transaction():
+            context.run_migrations()
 
 
 if context.is_offline_mode():

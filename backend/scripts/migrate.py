@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """
-Smart database migration script.
+Smart database migration script with proper locking.
 
 This script handles all migration scenarios automatically:
 1. Fresh database (no tables) → Run all migrations
 2. Existing database from create_all() (no alembic_version) → Stamp as baseline, then upgrade
 3. Already migrated database → Run pending migrations
 
-Locking is handled in alembic/env.py using PostgreSQL advisory locks.
+Uses PostgreSQL advisory lock to prevent concurrent migrations.
 
 Usage:
     python scripts/migrate.py
-
-This is the ONLY way to run migrations in production.
 """
 import os
 import sys
@@ -21,7 +19,7 @@ import logging
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import inspect, text
+from sqlalchemy import text
 from alembic.config import Config
 from alembic import command
 
@@ -30,6 +28,9 @@ from app.core.config import settings
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Advisory lock ID - must be unique for migrations
+MIGRATION_LOCK_ID = 999888777
 
 
 def get_alembic_config():
@@ -42,66 +43,67 @@ def get_alembic_config():
     return config
 
 
-def has_alembic_version_table() -> bool:
-    """Check if alembic_version table exists."""
-    inspector = inspect(engine)
-    return 'alembic_version' in inspector.get_table_names()
-
-
-def has_existing_tables() -> bool:
-    """Check if any application tables exist."""
-    inspector = inspect(engine)
-    tables = inspector.get_table_names()
-    return 'users' in tables or 'reddit_campaigns' in tables
-
-
-def get_current_revision() -> str | None:
-    """Get current alembic revision from database."""
-    if not has_alembic_version_table():
-        return None
-
-    with engine.connect() as conn:
-        result = conn.execute(text("SELECT version_num FROM alembic_version"))
-        row = result.fetchone()
-        return row[0] if row else None
-
-
 def run_migrations():
     """
-    Run database migrations with smart detection.
-    Locking is handled by alembic/env.py.
+    Run database migrations with advisory lock.
+    All checks and migrations happen within a single locked connection.
     """
     config = get_alembic_config()
 
-    has_alembic = has_alembic_version_table()
-    has_tables = has_existing_tables()
-    current_rev = get_current_revision()
+    with engine.connect() as conn:
+        # Acquire advisory lock - blocks until available
+        logger.info("Acquiring migration lock...")
+        conn.execute(text(f"SELECT pg_advisory_lock({MIGRATION_LOCK_ID})"))
+        logger.info("Migration lock acquired.")
 
-    logger.info(f"Migration state check:")
-    logger.info(f"  - alembic_version table exists: {has_alembic}")
-    logger.info(f"  - application tables exist: {has_tables}")
-    logger.info(f"  - current revision: {current_rev or 'None'}")
+        try:
+            # Check database state INSIDE the lock
+            result = conn.execute(text(
+                "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'alembic_version')"
+            ))
+            has_alembic = result.scalar()
 
-    if has_alembic and current_rev:
-        logger.info("Database is under migration control. Running pending migrations...")
-        command.upgrade(config, "head")
-        logger.info("Migrations complete.")
+            result = conn.execute(text(
+                "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'users')"
+            ))
+            has_tables = result.scalar()
 
-    elif has_tables and not has_alembic:
-        logger.info("Existing database detected without migration tracking.")
-        logger.info("Stamping database as baseline (0001)...")
-        command.stamp(config, "0001")
-        logger.info("Running any pending migrations after baseline...")
-        command.upgrade(config, "head")
-        logger.info("Migrations complete.")
+            current_rev = None
+            if has_alembic:
+                result = conn.execute(text("SELECT version_num FROM alembic_version"))
+                row = result.fetchone()
+                current_rev = row[0] if row else None
 
-    else:
-        logger.info("Fresh database detected. Running all migrations...")
-        command.upgrade(config, "head")
-        logger.info("Migrations complete.")
+            logger.info(f"Migration state check:")
+            logger.info(f"  - alembic_version table exists: {has_alembic}")
+            logger.info(f"  - application tables exist: {has_tables}")
+            logger.info(f"  - current revision: {current_rev or 'None'}")
 
-    final_rev = get_current_revision()
-    logger.info(f"Final database revision: {final_rev}")
+            if has_alembic and current_rev:
+                logger.info("Database is under migration control. Running pending migrations...")
+                command.upgrade(config, "head")
+
+            elif has_tables and not has_alembic:
+                logger.info("Existing database detected without migration tracking.")
+                logger.info("Stamping database as baseline (0001)...")
+                command.stamp(config, "0001")
+                logger.info("Running pending migrations after baseline...")
+                command.upgrade(config, "head")
+
+            else:
+                logger.info("Fresh database detected. Running all migrations...")
+                command.upgrade(config, "head")
+
+            # Get final revision
+            result = conn.execute(text("SELECT version_num FROM alembic_version"))
+            row = result.fetchone()
+            final_rev = row[0] if row else None
+            logger.info(f"Migrations complete. Final revision: {final_rev}")
+
+        finally:
+            # Release lock
+            conn.execute(text(f"SELECT pg_advisory_unlock({MIGRATION_LOCK_ID})"))
+            logger.info("Migration lock released.")
 
 
 if __name__ == "__main__":

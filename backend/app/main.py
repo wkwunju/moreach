@@ -3,7 +3,6 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text, inspect
 
 from app.core.config import settings
 from app.core.db import Base, engine
@@ -17,35 +16,14 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-def ensure_schema_updates():
-    """Ensure required schema updates exist (replaces complex migrations)."""
-    try:
-        with engine.connect() as conn:
-            # Check and add is_blocked column if missing
-            result = conn.execute(text("""
-                SELECT column_name FROM information_schema.columns
-                WHERE table_name = 'users' AND column_name = 'is_blocked'
-            """))
-            if not result.fetchone():
-                logger.info("Adding is_blocked column to users table...")
-                conn.execute(text(
-                    "ALTER TABLE users ADD COLUMN is_blocked BOOLEAN NOT NULL DEFAULT false"
-                ))
-                conn.commit()
-                logger.info("is_blocked column added successfully")
-            else:
-                logger.info("Schema is up to date")
-    except Exception as e:
-        logger.error(f"Error ensuring schema updates: {e}")
-
-
 # Database initialization
+# Production: USE_ALEMBIC=true, migrations run via scripts/migrate.py before app starts
+# Development: USE_ALEMBIC not set, use create_all() for convenience
 if os.getenv("USE_ALEMBIC", "false").lower() != "true":
     logger.info("Running create_all() for database initialization")
     Base.metadata.create_all(bind=engine)
-
-# Always ensure schema is up to date (handles missing columns)
-ensure_schema_updates()
+else:
+    logger.info("USE_ALEMBIC=true, expecting migrations to be run separately")
 
 app = FastAPI(title=settings.app_name)
 

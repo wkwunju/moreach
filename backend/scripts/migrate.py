@@ -88,38 +88,54 @@ def run_migrations():
             logger.info(f"  - application tables exist: {has_tables}")
             logger.info(f"  - current revision: {current_rev or 'None'}")
 
-            if has_alembic and current_rev:
-                logger.info("Database is under migration control. Running pending migrations...")
-                command.upgrade(config, "head")
-
-            elif has_tables and not has_alembic:
-                logger.info("Existing database detected without migration tracking.")
-
-                # Check what actually exists to determine correct stamp point
+            # Detect actual schema state regardless of alembic_version
+            def detect_schema_level():
+                """Detect what migration level the actual schema is at."""
                 result = conn.execute(text(
-                    "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'usage_tracking')"
-                ))
-                has_usage_tracking = result.scalar()
-
-                result = conn.execute(text(
-                    "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'is_blocked')"
+                    "SELECT EXISTS(SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = 'users' AND column_name = 'is_blocked')"
                 ))
                 has_is_blocked = result.scalar()
+
+                result = conn.execute(text(
+                    "SELECT EXISTS(SELECT 1 FROM information_schema.tables "
+                    "WHERE table_name = 'usage_tracking')"
+                ))
+                has_usage_tracking = result.scalar()
 
                 logger.info(f"  - usage_tracking table exists: {has_usage_tracking}")
                 logger.info(f"  - is_blocked column exists: {has_is_blocked}")
 
                 if has_is_blocked:
-                    # All migrations already applied via create_all
-                    logger.info("Schema is complete. Stamping at head (0003)...")
-                    command.stamp(config, "0003")
+                    return "0003"
                 elif has_usage_tracking:
-                    # Has 0002, needs 0003
-                    logger.info("Stamping at 0002, then upgrading...")
-                    command.stamp(config, "0002")
+                    return "0002"
+                elif has_tables:
+                    return "0001"
+                return None
+
+            if has_tables:
+                actual_level = detect_schema_level()
+            else:
+                actual_level = None
+
+            if has_alembic and current_rev:
+                # Schema might be ahead of recorded revision (e.g. create_all ran)
+                if actual_level and actual_level > current_rev:
+                    logger.info(f"Schema is at {actual_level} but revision says {current_rev}. Re-stamping...")
+                    command.stamp(config, actual_level)
+                # Now run any pending migrations from actual level to head
+                logger.info("Database is under migration control. Running pending migrations...")
+                command.upgrade(config, "head")
+
+            elif has_tables:
+                # Tables exist but either no alembic table or empty alembic_version
+                logger.info("Existing database detected. Syncing migration tracking to schema state...")
+                if actual_level:
+                    logger.info(f"Stamping at {actual_level}...")
+                    command.stamp(config, actual_level)
                     command.upgrade(config, "head")
                 else:
-                    # Only has base tables
                     logger.info("Stamping at 0001, then upgrading...")
                     command.stamp(config, "0001")
                     command.upgrade(config, "head")

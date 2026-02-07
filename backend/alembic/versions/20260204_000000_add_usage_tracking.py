@@ -19,6 +19,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Check if the table already exists (e.g. from create_all())
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT EXISTS(SELECT 1 FROM information_schema.tables "
+        "WHERE table_name = 'usage_tracking')"
+    ))
+    if result.scalar():
+        return
+
     # Create APIType enum
     api_type = sa.Enum(
         'REDDIT_APIFY', 'REDDIT_RAPIDAPI', 'LLM_GEMINI', 'LLM_OPENAI', 'EMBEDDING',

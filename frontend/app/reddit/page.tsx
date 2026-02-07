@@ -479,13 +479,17 @@ function RedditPageContent() {
   });
   const [isResizing, setIsResizing] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [isXlScreen, setIsXlScreen] = useState(false);
 
-  // Track desktop/mobile for responsive width
+  // Track desktop/mobile and xl breakpoint for responsive width
   useEffect(() => {
-    const checkDesktop = () => setIsDesktop(window.innerWidth >= 1024);
-    checkDesktop();
-    window.addEventListener('resize', checkDesktop);
-    return () => window.removeEventListener('resize', checkDesktop);
+    const checkBreakpoints = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+      setIsXlScreen(window.innerWidth >= 1280);
+    };
+    checkBreakpoints();
+    window.addEventListener('resize', checkBreakpoints);
+    return () => window.removeEventListener('resize', checkBreakpoints);
   }, []);
 
   // Helper to update URL without full navigation
@@ -1606,8 +1610,8 @@ function RedditPageContent() {
         {/* Step: View Leads - Inbox Style */}
         {step === "leads" && currentCampaign && (
           <div className="fixed inset-0 bg-white flex">
-            {/* Left Sidebar - Subreddit Filters (hidden on mobile) */}
-            <div className="hidden lg:flex w-64 border-r bg-gray-50 flex-col">
+            {/* Left Sidebar - Subreddit Filters (hidden below xl breakpoint) */}
+            <div className="hidden xl:flex w-64 border-r bg-gray-50 flex-col flex-shrink-0">
               {/* Scrollable content area */}
               <div className="flex-1 overflow-y-auto pt-8 px-6 pb-6">
                 <button
@@ -1616,14 +1620,14 @@ function RedditPageContent() {
                     setLeads([]);
                     setSelectedLead(null);
                   }}
-                  className="text-gray-600 mb-8 hover:text-gray-900 text-sm flex items-center gap-1"
+                  className="text-gray-600 mb-6 hover:text-gray-900 text-xs flex items-center gap-1"
                 >
                   <span>←</span> Back to Radars
                 </button>
 
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-bold">Inbox</h2>
+                    <h2 className="text-base font-semibold">Inbox</h2>
                     {/* Scanning indicator */}
                     {isStreaming && (
                       <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 text-green-700 rounded-full border border-green-200 animate-pulse">
@@ -1647,8 +1651,8 @@ function RedditPageContent() {
                 </div>
 
                 {/* Status Tabs */}
-                <div className="mb-6">
-                  <div className="space-y-1">
+                <div className="mb-4">
+                  <div className="space-y-0.5">
                     {["Inbox", "Contacted"].map((tab, idx) => {
                       const statusMap: Record<string, string> = {
                         "Inbox": "NEW",
@@ -1660,7 +1664,7 @@ function RedditPageContent() {
                       };
                       const status = statusMap[tab];
                       const count = countMap[tab];
-                      
+
                       return (
                         <button
                           key={tab}
@@ -1669,14 +1673,14 @@ function RedditPageContent() {
                             setFilterStatus(status);
                             await handleViewLeads(currentCampaign, status);
                           }}
-                          className={`w-full text-left px-3 py-2 rounded text-sm flex justify-between items-center ${
+                          className={`w-full text-left px-2.5 py-1.5 rounded text-xs flex justify-between items-center ${
                             filterStatus === status
                               ? "bg-gray-200 font-medium"
                               : "hover:bg-gray-100"
                           }`}
                         >
                           <span>{tab}</span>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
                             filterStatus === status
                               ? "bg-gray-900 text-white"
                               : "bg-gray-200 text-gray-600"
@@ -1691,8 +1695,8 @@ function RedditPageContent() {
 
                 {/* Subreddit Filter */}
                 <div>
-                  <div className="flex items-center justify-between mb-2 px-3">
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase">
+                  <div className="flex items-center justify-between mb-1.5 px-2.5">
+                    <h3 className="text-[10px] font-semibold text-gray-500 uppercase">
                       Filter by Subreddit
                     </h3>
                     <button
@@ -1700,37 +1704,37 @@ function RedditPageContent() {
                       className="text-gray-900 hover:text-gray-700"
                       title="Add Subreddit"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
                       </svg>
                     </button>
                   </div>
                   <button
                     onClick={() => setSelectedSubreddit("all")}
-                    className={`w-full text-left px-3 py-2 rounded text-sm flex justify-between items-center ${
+                    className={`w-full text-left px-2.5 py-1.5 rounded text-xs flex justify-between items-center ${
                       selectedSubreddit === "all"
                         ? "bg-gray-200 font-medium"
                         : "hover:bg-gray-100"
                     }`}
                   >
                     <span>All subreddits</span>
-                    <span className="text-xs text-gray-500">{leads.length}</span>
+                    <span className="text-[10px] text-gray-500">{leads.length}</span>
                   </button>
-                  
+
                   {Array.from(new Set(leads.map(l => l.subreddit_name))).map((subreddit) => {
                     const count = leads.filter(l => l.subreddit_name === subreddit).length;
                     return (
                       <button
                         key={subreddit}
                         onClick={() => setSelectedSubreddit(subreddit)}
-                        className={`w-full text-left px-3 py-2 rounded text-sm flex justify-between items-center ${
+                        className={`w-full text-left px-2.5 py-1.5 rounded text-xs flex justify-between items-center ${
                           selectedSubreddit === subreddit
                             ? "bg-gray-200 font-medium"
                             : "hover:bg-gray-100"
                         }`}
                       >
                         <span>r/{subreddit}</span>
-                        <span className="text-xs text-gray-500">{count}</span>
+                        <span className="text-[10px] text-gray-500">{count}</span>
                       </button>
                     );
                   })}
@@ -1759,8 +1763,8 @@ function RedditPageContent() {
             </div>
 
             {/* Center - Leads List */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Mobile Header with Back */}
+            <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+              {/* Mobile Header with Back (below lg) */}
               <div className="lg:hidden border-b px-4 py-3 flex items-center gap-3 bg-white">
                 <button
                   onClick={() => {
@@ -1787,8 +1791,19 @@ function RedditPageContent() {
                   </div>
                 )}
               </div>
-              {/* Desktop Header */}
+              {/* Desktop Header (lg and above) */}
               <div className="hidden lg:flex border-b px-6 pt-8 pb-4 items-center justify-between bg-white">
+                {/* Back button - shown only between lg and xl when sidebar is hidden */}
+                <button
+                  onClick={() => {
+                    setStep("campaigns");
+                    setLeads([]);
+                    setSelectedLead(null);
+                  }}
+                  className="xl:hidden mr-4 text-gray-600 hover:text-gray-900 text-xs flex items-center gap-1"
+                >
+                  <span>←</span> Back
+                </button>
                 <div className="flex items-center gap-4">
                   {/* Sort Dropdown */}
                   <div className="relative">
@@ -1886,7 +1901,7 @@ function RedditPageContent() {
                     )}
                   </div>
                 ) : (
-                  <div className="p-4 space-y-3">
+                  <div className="p-3 space-y-2">
                     {leads
                       .filter(l => selectedSubreddit === "all" || l.subreddit_name === selectedSubreddit)
                       .sort((a, b) => {
@@ -1936,75 +1951,75 @@ function RedditPageContent() {
                           <div
                             key={lead.id}
                             onClick={() => handleSelectLead(lead)}
-                            className={`bg-white rounded-xl border shadow-sm cursor-pointer transition-all hover:shadow-md ${
+                            className={`bg-white rounded-lg border cursor-pointer transition-all hover:shadow-sm ${
                               selectedLead?.id === lead.id
-                                ? "ring-2 ring-gray-900 border-gray-900"
+                                ? "ring-1 ring-gray-900 border-gray-900"
                                 : "border-gray-200 hover:border-gray-300"
                             }`}
                           >
                             <div className="flex items-stretch">
                               {/* Left: Score Section */}
-                              <div className={`flex flex-col items-center justify-center px-4 py-4 ${tier.bg} rounded-l-xl border-r ${tier.border} min-w-[70px]`}>
-                                <span className={`text-2xl font-bold ${tier.color}`}>{relevancyPercent}</span>
-                                <span className={`text-[10px] font-semibold ${tier.color} tracking-wide`}>{tier.label}</span>
+                              <div className={`flex flex-col items-center justify-center px-3 py-3 ${tier.bg} rounded-l-lg border-r ${tier.border} min-w-[56px]`}>
+                                <span className={`text-xl font-bold ${tier.color}`}>{relevancyPercent}</span>
+                                <span className={`text-[9px] font-semibold ${tier.color} tracking-wide`}>{tier.label}</span>
                               </div>
 
                               {/* Middle: Content */}
-                              <div className="flex-1 p-4 min-w-0">
+                              <div className="flex-1 p-3 min-w-0">
                                 {/* Header: Reddit icon, subreddit, timestamp */}
-                                <div className="flex items-center gap-2 mb-2">
-                                  <svg className="w-5 h-5 text-orange-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                                <div className="flex items-center gap-1.5 mb-1.5">
+                                  <svg className="w-4 h-4 text-orange-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                                     <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/>
                                   </svg>
-                                  <span className="font-semibold text-sm text-gray-900">r/{lead.subreddit_name || 'unknown'}</span>
-                                  <span className="text-xs text-gray-400">{formatTimestamp()}</span>
+                                  <span className="font-medium text-xs text-gray-900">r/{lead.subreddit_name || 'unknown'}</span>
+                                  <span className="text-[11px] text-gray-400">{formatTimestamp()}</span>
                                 </div>
 
                                 {/* Title */}
-                                <h3 className="font-bold text-gray-900 mb-1 line-clamp-1">
+                                <h3 className="font-semibold text-[13px] text-gray-900 mb-1 line-clamp-1">
                                   {lead.title || 'Untitled'}
                                 </h3>
 
                                 {/* Content preview */}
-                                <p className="text-sm text-gray-600 line-clamp-2 mb-3">
+                                <p className="text-xs text-gray-500 line-clamp-2 mb-2">
                                   {lead.content ? (lead.content.substring(0, 180) + (lead.content.length > 180 ? '...' : '')) : 'No content'}
                                 </p>
 
                                 {/* Bottom: Stats */}
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <span className="inline-flex items-center gap-0.5 text-[11px] text-gray-400">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
                                     </svg>
                                     {lead.score || 0}
                                   </span>
-                                  <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <span className="inline-flex items-center gap-0.5 text-[11px] text-gray-400">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                                     </svg>
                                     {lead.num_comments || 0}
                                   </span>
                                   {lead.author && (
-                                    <span className="text-xs text-gray-400">by u/{lead.author}</span>
+                                    <span className="text-[11px] text-gray-400">by u/{lead.author}</span>
                                   )}
                                 </div>
                               </div>
 
                               {/* Right: Action Icons */}
-                              <div className="flex flex-col items-center justify-center gap-2 px-3 border-l border-gray-100">
+                              <div className="flex flex-col items-center justify-center gap-1.5 px-2 border-l border-gray-100">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleUpdateStatus(lead.id, lead.status === "CONTACTED" ? "NEW" : "CONTACTED");
                                   }}
-                                  className={`p-1.5 rounded-lg transition-colors ${
+                                  className={`p-1 rounded-md transition-colors ${
                                     lead.status === "CONTACTED"
                                       ? "text-green-600 bg-green-50 hover:bg-green-100"
                                       : "text-gray-400 hover:text-green-600 hover:bg-green-50"
                                   }`}
                                   title={lead.status === "CONTACTED" ? "Move to inbox" : "Mark as contacted"}
                                 >
-                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                                   </svg>
                                 </button>
@@ -2013,14 +2028,14 @@ function RedditPageContent() {
                                     e.stopPropagation();
                                     handleUpdateStatus(lead.id, "DISMISSED");
                                   }}
-                                  className={`p-1.5 rounded-lg transition-colors ${
+                                  className={`p-1 rounded-md transition-colors ${
                                     lead.status === "DISMISSED"
                                       ? "text-red-600 bg-red-50 hover:bg-red-100"
                                       : "text-gray-400 hover:text-red-600 hover:bg-red-50"
                                   }`}
                                   title="Dismiss"
                                 >
-                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                                   </svg>
                                 </button>
@@ -2034,30 +2049,37 @@ function RedditPageContent() {
               </div>
             </div>
 
-            {/* Right Panel - Lead Details (full screen overlay on mobile) */}
+            {/* Right Panel - Lead Details (bottom drawer on mobile, responsive on tablet/desktop) */}
             {selectedLead && (
               <>
                 {/* Mobile backdrop */}
                 <div
-                  className="lg:hidden fixed inset-0 bg-black/30 z-40"
+                  className="lg:hidden fixed inset-0 bg-black/40 z-40"
                   onClick={() => setSelectedLead(null)}
                 />
                 <div
-                  className="fixed inset-0 top-14 lg:top-0 lg:relative lg:inset-auto lg:border-l bg-white overflow-y-auto z-50 lg:z-auto"
-                  style={isDesktop ? { width: `${detailPanelWidth}px` } : undefined}
+                  className="fixed inset-x-0 bottom-0 top-16 lg:top-0 lg:relative lg:inset-auto lg:border-l bg-white overflow-y-auto z-50 lg:z-auto lg:w-1/2 xl:w-auto flex-shrink-0 rounded-t-2xl lg:rounded-none shadow-[0_-4px_20px_rgba(0,0,0,0.15)] lg:shadow-none"
+                  style={isXlScreen ? { width: `${detailPanelWidth}px` } : undefined}
                 >
-                {/* Mobile Close Button */}
-                <button
-                  onClick={() => setSelectedLead(null)}
-                  className="lg:hidden fixed top-4 right-4 z-10 p-2 bg-white rounded-full shadow-lg border border-gray-200"
-                >
-                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-                {/* Resize Handle (hidden on mobile) */}
+                {/* Mobile Drawer Header with drag handle and close button */}
+                <div className="lg:hidden sticky top-0 bg-white z-10 px-3 pt-2 rounded-t-2xl">
+                  {/* Drag handle and close in one row */}
+                  <div className="flex items-center justify-between">
+                    <div className="w-5"></div>
+                    <div className="w-10 h-1 bg-gray-300 rounded-full"></div>
+                    <button
+                      onClick={() => setSelectedLead(null)}
+                      className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                {/* Resize Handle (only shown on xl+ when custom width is applied) */}
                 <div
-                  className={`hidden lg:block absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-gray-900 transition-colors ${
+                  className={`hidden xl:block absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-gray-900 transition-colors ${
                     isResizing ? 'bg-gray-900' : 'bg-transparent'
                   }`}
                   onMouseDown={handleMouseDown}
@@ -2065,7 +2087,7 @@ function RedditPageContent() {
                 >
                   <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-12 bg-gray-300 rounded-full" />
                 </div>
-                <div className="p-6 space-y-4 bg-gray-50">
+                <div className="p-5 space-y-3 bg-gray-50">
                   {/* Combined Header + Content Card */}
                   {(() => {
                     const score = selectedLead.relevancy_score || 0;
@@ -2086,36 +2108,36 @@ function RedditPageContent() {
                     return (
                       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                         {/* Header: Score + Meta */}
-                        <div className="flex items-center gap-4 p-4 border-b border-gray-100">
+                        <div className="flex items-center gap-3 p-3 border-b border-gray-100">
                           {/* Score Circle */}
-                          <div className={`w-16 h-16 rounded-full ${tier.bg} border-2 ${tier.border} flex flex-col items-center justify-center flex-shrink-0`}>
-                            <span className={`text-xl font-bold ${tier.color} leading-none`}>{relevancyPercent}</span>
-                            <span className={`text-[10px] font-semibold ${tier.color} tracking-wide`}>{tier.label}</span>
+                          <div className={`w-12 h-12 rounded-full ${tier.bg} border-2 ${tier.border} flex flex-col items-center justify-center flex-shrink-0`}>
+                            <span className={`text-base font-bold ${tier.color} leading-none`}>{relevancyPercent}</span>
+                            <span className={`text-[8px] font-semibold ${tier.color} tracking-wide`}>{tier.label}</span>
                           </div>
                           {/* Meta Info */}
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <svg className="w-5 h-5 text-orange-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <svg className="w-4 h-4 text-orange-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/>
                               </svg>
-                              <span className="font-semibold text-sm text-gray-900">r/{selectedLead.subreddit_name || 'unknown'}</span>
-                              <span className="text-xs text-gray-400">{formatTimestamp()}</span>
+                              <span className="font-medium text-xs text-gray-900">r/{selectedLead.subreddit_name || 'unknown'}</span>
+                              <span className="text-[11px] text-gray-400">{formatTimestamp()}</span>
                             </div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                 </svg>
                                 u/{selectedLead.author || '[deleted]'}
                               </span>
-                              <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
                                 </svg>
                                 {selectedLead.score || 0}
                               </span>
-                              <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                                 </svg>
                                 {selectedLead.num_comments || 0}
@@ -2125,10 +2147,10 @@ function RedditPageContent() {
                                   href={selectedLead.post_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs text-orange-500 hover:text-orange-600 transition-colors"
+                                  className="inline-flex items-center gap-1 text-[11px] text-orange-500 hover:text-orange-600 transition-colors"
                                   title="View on Reddit"
                                 >
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                   </svg>
                                   Open
@@ -2138,11 +2160,11 @@ function RedditPageContent() {
                           </div>
                         </div>
                         {/* Post Content */}
-                        <div className="p-5">
-                          <h2 className="text-lg font-bold text-gray-900 mb-3">
+                        <div className="p-4">
+                          <h2 className="text-sm font-semibold text-gray-900 mb-2">
                             {selectedLead.title || 'Untitled'}
                           </h2>
-                          <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                          <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
                             {selectedLead.content || 'No content available'}
                           </p>
                         </div>
@@ -2152,14 +2174,14 @@ function RedditPageContent() {
 
                   {/* Reasoning Card */}
                   <div className="bg-white rounded-xl border border-green-200 shadow-sm overflow-hidden">
-                    <div className="px-4 py-3 bg-green-50 border-b border-green-200 flex items-center gap-2">
-                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="px-3 py-2 bg-green-50 border-b border-green-200 flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                       </svg>
-                      <span className="text-sm font-semibold text-green-800">Why this is a lead</span>
+                      <span className="text-xs font-semibold text-green-800">Why this is a lead</span>
                     </div>
-                    <div className="p-4">
-                      <p className="text-sm text-gray-700 leading-relaxed">
+                    <div className="p-3">
+                      <p className="text-xs text-gray-700 leading-relaxed">
                         {selectedLead.relevancy_reason || 'No reasoning available'}
                       </p>
                     </div>
@@ -2167,16 +2189,16 @@ function RedditPageContent() {
 
                   {/* Suggested Comment Card */}
                   <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
-                    <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="px-3 py-2 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
                         </svg>
-                        <span className="text-sm font-semibold text-amber-800">Suggested Comment</span>
+                        <span className="text-xs font-semibold text-amber-800">Suggested Comment</span>
                       </div>
                       {loadingSuggestions && (
-                        <span className="text-xs text-amber-600 flex items-center gap-1">
-                          <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <span className="text-[10px] text-amber-600 flex items-center gap-1">
+                          <svg className="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                           </svg>
@@ -2184,23 +2206,23 @@ function RedditPageContent() {
                         </span>
                       )}
                     </div>
-                    <div className="p-4">
+                    <div className="p-3">
                       {loadingSuggestions ? (
                         <div className="animate-pulse">
-                          <div className="h-4 bg-amber-100 rounded w-3/4 mb-2" />
-                          <div className="h-4 bg-amber-100 rounded w-1/2" />
+                          <div className="h-3 bg-amber-100 rounded w-3/4 mb-2" />
+                          <div className="h-3 bg-amber-100 rounded w-1/2" />
                         </div>
                       ) : (
-                        <p className="text-sm text-gray-700 leading-relaxed mb-4">
+                        <p className="text-xs text-gray-700 leading-relaxed mb-3">
                           {selectedLead.suggested_comment || 'No suggested comment available'}
                         </p>
                       )}
                       <button
                         onClick={() => handleCopyAndComment(selectedLead)}
                         disabled={loadingSuggestions || !selectedLead.suggested_comment}
-                        className="w-full px-4 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="w-full px-3 py-2 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                         </svg>
                         Copy & Comment
@@ -2210,16 +2232,16 @@ function RedditPageContent() {
 
                   {/* Suggested DM Card */}
                   <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
-                    <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="px-3 py-2 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                         </svg>
-                        <span className="text-sm font-semibold text-amber-800">Suggested DM</span>
+                        <span className="text-xs font-semibold text-amber-800">Suggested DM</span>
                       </div>
                       {loadingSuggestions && (
-                        <span className="text-xs text-amber-600 flex items-center gap-1">
-                          <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <span className="text-[10px] text-amber-600 flex items-center gap-1">
+                          <svg className="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                           </svg>
@@ -2227,24 +2249,24 @@ function RedditPageContent() {
                         </span>
                       )}
                     </div>
-                    <div className="p-4">
+                    <div className="p-3">
                       {loadingSuggestions ? (
                         <div className="animate-pulse">
-                          <div className="h-4 bg-amber-100 rounded w-3/4 mb-2" />
-                          <div className="h-4 bg-amber-100 rounded w-2/3 mb-2" />
-                          <div className="h-4 bg-amber-100 rounded w-1/2" />
+                          <div className="h-3 bg-amber-100 rounded w-3/4 mb-2" />
+                          <div className="h-3 bg-amber-100 rounded w-2/3 mb-2" />
+                          <div className="h-3 bg-amber-100 rounded w-1/2" />
                         </div>
                       ) : (
-                        <p className="text-sm text-gray-700 leading-relaxed mb-4">
+                        <p className="text-xs text-gray-700 leading-relaxed mb-3">
                           {selectedLead.suggested_dm || 'No suggested DM available'}
                         </p>
                       )}
                       <button
                         onClick={() => handleCopyAndDM(selectedLead)}
                         disabled={loadingSuggestions || !selectedLead.suggested_dm}
-                        className="w-full px-4 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="w-full px-3 py-2 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                         </svg>
                         Copy & DM

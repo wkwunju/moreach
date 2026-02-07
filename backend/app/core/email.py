@@ -205,38 +205,46 @@ def send_poll_summary_email(
         top_leads: List of top 10 leads with title, subreddit_name, relevancy_score, post_url
         campaign_id: Campaign ID for building the "View Leads" link
     """
-    subject = f"🎯 {total_leads_created} new leads discovered - moreach.ai"
+    subject = f"{total_leads_created} new leads found - moreach.ai"
 
-    # Build top leads rows
-    top_leads_rows = ""
-    for i, lead in enumerate(top_leads[:10]):
+    # Build top leads cards - premium minimal design
+    top_leads_cards = ""
+    for i, lead in enumerate(top_leads[:8]):
         score = lead.get("relevancy_score", 0)
-        # Color based on score
-        if score >= 90:
-            score_color = "#22c55e"
-            score_bg = "#f0fdf4"
-        elif score >= 80:
-            score_color = "#84cc16"
-            score_bg = "#f7fee7"
-        else:
-            score_color = "#eab308"
-            score_bg = "#fefce8"
 
-        title = lead.get("title", "")[:80]
-        if len(lead.get("title", "")) > 80:
+        title = lead.get("title", "")[:65]
+        if len(lead.get("title", "")) > 65:
             title += "..."
 
-        top_leads_rows += f"""
-        <tr>
-            <td style="padding: 14px 16px; border-bottom: 1px solid #f0f0f0;">
-                <div style="font-size: 14px; color: #111; font-weight: 500; line-height: 1.4; margin-bottom: 6px;">{title}</div>
-                <div style="font-size: 12px; color: #666;">
-                    <span style="color: #f97316; font-weight: 500;">r/{lead.get("subreddit_name", "")}</span>
-                    <span style="margin: 0 6px; color: #ddd;">•</span>
-                    <span style="display: inline-block; padding: 2px 6px; background-color: {score_bg}; color: {score_color}; border-radius: 4px; font-weight: 600; font-size: 11px;">{score}</span>
-                </div>
-            </td>
-        </tr>"""
+        post_url = lead.get("post_url", "#")
+        subreddit = lead.get("subreddit_name", "")
+
+        top_leads_cards += f"""
+                                        <tr>
+                                            <td style="padding: 0 0 10px 0;">
+                                                <a href="{post_url}" style="text-decoration: none; display: block;">
+                                                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border-radius: 12px; border: 1px solid #f0f0f0;">
+                                                        <tr>
+                                                            <td style="padding: 14px 16px;">
+                                                                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                                                    <tr>
+                                                                        <td style="vertical-align: top; width: 40px;">
+                                                                            <div style="width: 34px; height: 34px; background: linear-gradient(145deg, #f97316 0%, #ea580c 100%); border-radius: 8px; text-align: center; line-height: 34px;">
+                                                                                <span style="color: #fff; font-size: 12px; font-weight: 700;">{score}</span>
+                                                                            </div>
+                                                                        </td>
+                                                                        <td style="vertical-align: top; padding-left: 12px;">
+                                                                            <div style="font-size: 13px; color: #1a1a1a; font-weight: 500; line-height: 1.4; margin-bottom: 3px;">{title}</div>
+                                                                            <div style="font-size: 11px; color: #888; font-weight: 500;">r/{subreddit}</div>
+                                                                        </td>
+                                                                    </tr>
+                                                                </table>
+                                                            </td>
+                                                        </tr>
+                                                    </table>
+                                                </a>
+                                            </td>
+                                        </tr>"""
 
     html_content = f"""
     <!DOCTYPE html>
@@ -245,24 +253,23 @@ def send_poll_summary_email(
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="min-width: 100%; background-color: #f5f5f5;">
+    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; background-color: #f8f8f8; -webkit-font-smoothing: antialiased;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="min-width: 100%; background-color: #f8f8f8;">
             <tr>
-                <td align="center" style="padding: 40px 20px;">
-                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
-                        <!-- Header with Logo -->
+                <td align="center" style="padding: 48px 24px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px;">
+
+                        <!-- Logo -->
                         <tr>
-                            <td style="padding: 28px 40px; text-align: center; border-bottom: 1px solid #f0f0f0;">
-                                <a href="{settings.FRONTEND_URL}" style="text-decoration: none;">
+                            <td style="padding-bottom: 32px; text-align: center;">
+                                <a href="{settings.FRONTEND_URL}" style="text-decoration: none; display: inline-block;">
                                     <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 0 auto;">
                                         <tr>
-                                            <td style="padding-right: 10px; vertical-align: middle;">
-                                                <div style="width: 36px; height: 36px; background: linear-gradient(135deg, #111 0%, #333 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
-                                                    <span style="color: #fff; font-size: 18px; font-weight: 700;">m</span>
-                                                </div>
+                                            <td style="padding-right: 8px; vertical-align: middle;">
+                                                <img src="{settings.FRONTEND_URL}/favicon-32x32.png" alt="" width="28" height="28" style="display: block; border-radius: 6px;">
                                             </td>
                                             <td style="vertical-align: middle;">
-                                                <span style="font-size: 22px; font-weight: 800; color: #111; letter-spacing: -0.5px;">moreach.ai</span>
+                                                <span style="font-size: 18px; font-weight: 600; color: #1a1a1a; letter-spacing: -0.3px;">moreach.ai</span>
                                             </td>
                                         </tr>
                                     </table>
@@ -270,44 +277,45 @@ def send_poll_summary_email(
                             </td>
                         </tr>
 
-                        <!-- Main Content -->
+                        <!-- Main Card -->
                         <tr>
-                            <td style="padding: 36px 40px;">
-                                <!-- Big Number Hero -->
-                                <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 16px; padding: 32px; text-align: center; margin-bottom: 24px;">
-                                    <div style="font-size: 64px; font-weight: 800; color: #22c55e; line-height: 1; letter-spacing: -2px;">{total_leads_created}</div>
-                                    <div style="font-size: 15px; color: #666; margin-top: 8px; font-weight: 500;">new leads discovered</div>
-                                </div>
+                            <td>
+                                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border-radius: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 6px 16px rgba(0,0,0,0.04);">
 
-                                <!-- Stats Row -->
-                                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 28px;">
+                                    <!-- Hero Section -->
                                     <tr>
-                                        <td style="text-align: center; padding: 16px; background-color: #f9fafb; border-radius: 12px 0 0 12px;">
-                                            <div style="font-size: 24px; font-weight: 700; color: #111;">{total_posts_fetched}</div>
-                                            <div style="font-size: 12px; color: #666; margin-top: 2px;">posts scanned</div>
-                                        </td>
-                                        <td style="text-align: center; padding: 16px; background-color: #fefce8; border-radius: 0 12px 12px 0;">
-                                            <div style="font-size: 24px; font-weight: 700; color: #854d0e;">{high_quality_count}</div>
-                                            <div style="font-size: 12px; color: #a16207; margin-top: 2px;">high-quality (80+)</div>
+                                        <td style="padding: 36px 40px 28px; text-align: center;">
+                                            <div style="font-size: 14px; color: #1a1a1a; font-weight: 500; line-height: 1;">
+                                                We just discovered <span style="font-size: 22px; font-weight: 700; color: #f97316; vertical-align: baseline; position: relative; top: 1px;">{total_leads_created}</span> fresh leads for you
+                                            </div>
                                         </td>
                                     </tr>
-                                </table>
 
-                                <!-- Top Leads Section -->
-                                {f'''
-                                <h3 style="margin: 0 0 14px; font-size: 14px; font-weight: 700; color: #111; text-transform: uppercase; letter-spacing: 0.5px;">🔥 Top Leads</h3>
-                                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border: 1px solid #e5e5e5; border-radius: 12px; overflow: hidden; margin-bottom: 28px;">
-                                    {top_leads_rows}
-                                </table>
-                                ''' if top_leads else ''}
-
-                                <!-- CTA Button -->
-                                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                    <!-- Divider -->
                                     <tr>
-                                        <td style="text-align: center;">
+                                        <td style="padding: 0 40px;">
+                                            <div style="height: 1px; background: linear-gradient(90deg, transparent 0%, #e8e8e8 20%, #e8e8e8 80%, transparent 100%);"></div>
+                                        </td>
+                                    </tr>
+
+                                    <!-- Top Leads Section -->
+                                    {f'''
+                                    <tr>
+                                        <td style="padding: 32px 40px 24px;">
+                                            <div style="font-size: 11px; font-weight: 600; color: #f97316; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Top Matches</div>
+                                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                                {top_leads_cards}
+                                            </table>
+                                        </td>
+                                    </tr>
+                                    ''' if top_leads else ''}
+
+                                    <!-- CTA Button -->
+                                    <tr>
+                                        <td style="padding: 16px 40px 48px; text-align: center;">
                                             <a href="{settings.FRONTEND_URL}/reddit?view=leads&id={campaign_id}"
-                                               style="display: inline-block; padding: 16px 48px; background-color: #111; color: #ffffff; text-decoration: none; font-size: 15px; font-weight: 600; border-radius: 10px; letter-spacing: 0.3px;">
-                                                View All Leads →
+                                               style="display: inline-block; padding: 14px 36px; background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%); color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600; border-radius: 12px; letter-spacing: -0.2px; box-shadow: 0 2px 4px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08);">
+                                                View All Leads
                                             </a>
                                         </td>
                                     </tr>
@@ -317,14 +325,13 @@ def send_poll_summary_email(
 
                         <!-- Footer -->
                         <tr>
-                            <td style="padding: 20px 40px; border-top: 1px solid #f0f0f0; text-align: center;">
-                                <p style="margin: 0; font-size: 12px; color: #999;">
-                                    <a href="{settings.FRONTEND_URL}" style="color: #666; text-decoration: none;">moreach.ai</a>
-                                    <span style="margin: 0 8px; color: #ddd;">•</span>
-                                    Find leads on Reddit, effortlessly
+                            <td style="padding: 32px 0 0; text-align: center;">
+                                <p style="margin: 0; font-size: 12px; color: #a0a0a0; font-weight: 400;">
+                                    Sent by <a href="{settings.FRONTEND_URL}" style="color: #8b8b8b; text-decoration: none; font-weight: 500;">moreach.ai</a>
                                 </p>
                             </td>
                         </tr>
+
                     </table>
                 </td>
             </tr>

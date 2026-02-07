@@ -16,10 +16,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.core.email import send_poll_summary_email
 from app.models.tables import (
     User,
     RedditCampaign,
     RedditCampaignStatus,
+    RedditLead,
     SubscriptionTier,
 )
 from app.services.reddit.polling import RedditPollingService
@@ -163,6 +165,43 @@ def run_scheduled_polls(current_hour: int = None) -> dict:
                     summary = polling_service.poll_campaign_immediately(db, campaign.id)
                     stats["campaigns_polled"] += 1
                     logger.info(f"Campaign {campaign.id} poll completed: {summary}")
+
+                    # Send email notification if leads were created
+                    leads_created = summary.get("total_leads_created", 0)
+                    if leads_created > 0 and user.email:
+                        try:
+                            # Get top leads for this campaign (sorted by score)
+                            top_leads_query = db.query(RedditLead).filter(
+                                RedditLead.campaign_id == campaign.id
+                            ).order_by(RedditLead.relevancy_score.desc()).limit(10).all()
+
+                            top_leads = [
+                                {
+                                    "title": lead.title,
+                                    "subreddit_name": lead.subreddit_name,
+                                    "relevancy_score": lead.relevancy_score,
+                                    "post_url": lead.post_url
+                                }
+                                for lead in top_leads_query
+                            ]
+
+                            high_quality_count = sum(
+                                1 for lead in top_leads_query if lead.relevancy_score >= 80
+                            )
+
+                            send_poll_summary_email(
+                                to_email=user.email,
+                                campaign_name=campaign.business_description[:100],
+                                total_posts_fetched=summary.get("total_posts_found", 0),
+                                total_leads_created=leads_created,
+                                high_quality_count=high_quality_count,
+                                top_leads=top_leads,
+                                campaign_id=campaign.id
+                            )
+                            logger.info(f"Sent poll summary email to {user.email}")
+
+                        except Exception as email_error:
+                            logger.error(f"Error sending email for campaign {campaign.id}: {email_error}")
 
                 except Exception as e:
                     logger.error(

@@ -170,9 +170,10 @@ def run_scheduled_polls(current_hour: int = None) -> dict:
                     leads_created = summary.get("total_leads_created", 0)
                     if leads_created > 0 and user.email:
                         try:
-                            # Get top leads for this campaign (sorted by score)
+                            # Get top leads for this campaign (sorted by score, exclude unscored)
                             top_leads_query = db.query(RedditLead).filter(
-                                RedditLead.campaign_id == campaign.id
+                                RedditLead.campaign_id == campaign.id,
+                                RedditLead.relevancy_score.isnot(None)
                             ).order_by(RedditLead.relevancy_score.desc()).limit(10).all()
 
                             top_leads = [

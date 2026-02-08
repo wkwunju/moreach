@@ -25,6 +25,7 @@ from app.services.reddit.batch_scoring import BatchScoringService, AUTO_SUGGESTI
 from app.core.email import send_poll_summary_email
 from app.services.usage_tracking import track_api_call
 from app.core.config import settings
+from app.core.plan_limits import get_plan_limits
 
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,19 @@ class StreamingPollService:
                 yield {"type": "error", "data": {"message": "No active subreddits in this campaign"}}
                 return
 
+            # Smart budget: calculate posts per subreddit based on tier
+            user = db.get(User, campaign.user_id)
+            plan_limits = get_plan_limits(user.subscription_tier) if user else None
+            if plan_limits and plan_limits.max_posts_per_poll > 0:
+                posts_per_sub = max(5, plan_limits.max_posts_per_poll // len(active_subreddits))
+            else:
+                posts_per_sub = DEFAULT_POSTS_PER_SUBREDDIT
+
+            logger.info(
+                f"Smart budget: {len(active_subreddits)} subreddits × {posts_per_sub} posts "
+                f"(tier budget: {plan_limits.max_posts_per_poll if plan_limits else 'N/A'})"
+            )
+
             # ============================================
             # Phase 1: Fetch posts from all subreddits
             # ============================================
@@ -105,7 +119,7 @@ class StreamingPollService:
                     posts = await asyncio.to_thread(
                         self.reddit_provider.scrape_subreddit,
                         subreddit_name=sub.subreddit_name,
-                        max_posts=DEFAULT_POSTS_PER_SUBREDDIT,
+                        max_posts=posts_per_sub,
                         sort="new",
                         time_filter="day"
                     )

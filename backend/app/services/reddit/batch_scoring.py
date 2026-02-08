@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Default configuration
 DEFAULT_MAX_CONCURRENT = 5
-DEFAULT_BATCH_SIZE = 10  # Posts per LLM call
+DEFAULT_BATCH_SIZE = 20  # Posts per LLM call
 DEFAULT_TOP_N_SUGGESTIONS = 20
 ALLOWED_SCORES = [100, 90, 80, 70, 60, 50, 0]
 # Auto-generate suggestions only for posts with score >= this threshold

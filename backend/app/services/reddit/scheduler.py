@@ -186,7 +186,8 @@ def run_scheduled_polls(current_hour: int = None) -> dict:
                             ]
 
                             high_quality_count = sum(
-                                1 for lead in top_leads_query if lead.relevancy_score >= 80
+                                1 for lead in top_leads_query
+                                if lead.relevancy_score is not None and lead.relevancy_score >= 80
                             )
 
                             send_poll_summary_email(

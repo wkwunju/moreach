@@ -23,6 +23,7 @@ from app.providers.reddit.factory import get_reddit_provider
 from app.services.reddit.scoring import RedditScoringService
 from app.services.usage_tracking import track_api_call
 from app.core.config import settings
+from app.core.plan_limits import get_plan_limits
 
 
 logger = logging.getLogger(__name__)
@@ -360,15 +361,27 @@ class RedditPollingService:
                 "message": f"No active subreddits found. Total subreddits: {len(all_subreddits)}"
             }
         
-        logger.info(f"Polling {len(subreddits_to_poll)} subreddits for campaign {campaign_id}")
-        
+        # Smart budget: calculate posts per subreddit based on tier
+        from app.models.tables import User
+        user = db.get(User, campaign.user_id)
+        plan_limits = get_plan_limits(user.subscription_tier) if user else None
+        if plan_limits and plan_limits.max_posts_per_poll > 0:
+            posts_per_sub = max(5, plan_limits.max_posts_per_poll // len(subreddits_to_poll))
+        else:
+            posts_per_sub = 20
+
+        logger.info(
+            f"Polling {len(subreddits_to_poll)} subreddits for campaign {campaign_id} "
+            f"({posts_per_sub} posts/sub, budget: {plan_limits.max_posts_per_poll if plan_limits else 'N/A'})"
+        )
+
         total_posts = 0
         total_leads = 0
-        
+
         for subreddit_name in subreddits_to_poll:
             try:
-                # Poll subreddit (ignoring time checks) - 每个subreddit只抓20个帖子
-                posts = self.poll_subreddit(db, subreddit_name, limit=20)
+                # Poll subreddit with tier-based budget
+                posts = self.poll_subreddit(db, subreddit_name, limit=posts_per_sub)
                 total_posts += len(posts)
 
                 # Track Reddit API call for this user

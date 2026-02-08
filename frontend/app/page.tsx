@@ -1179,39 +1179,30 @@ function RedditContent() {
           </p>
 
           {/* Stats Row */}
-          <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto mb-10">
+          <div className="grid grid-cols-3 gap-8 max-w-3xl mx-auto mb-16">
             <div className="text-center">
-              <div className="text-3xl md:text-4xl font-bold text-white">30%</div>
-              <div className="text-sm text-orange-100 font-medium">Average Reply Rate</div>
+              <div className="text-5xl md:text-6xl font-bold text-white mb-2">30%</div>
+              <div className="text-base text-orange-100 font-medium">Average Reply Rate</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl md:text-4xl font-bold text-white">80%</div>
-              <div className="text-sm text-orange-100 font-medium">Positive Responses</div>
+              <div className="text-5xl md:text-6xl font-bold text-white mb-2">80%</div>
+              <div className="text-base text-orange-100 font-medium">Positive Responses</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl md:text-4xl font-bold text-white">100%</div>
-              <div className="text-sm text-orange-100 font-medium">Users find customers</div>
+              <div className="text-5xl md:text-6xl font-bold text-white mb-2">100%</div>
+              <div className="text-base text-orange-100 font-medium">Users find customers</div>
             </div>
           </div>
 
-          <Link
-            href="/reddit"
-            className="inline-flex items-center px-10 py-5 bg-white text-orange-600 text-lg font-bold rounded-full hover:bg-orange-50 transition-all shadow-2xl hover:shadow-orange-500/50 transform hover:scale-105"
-          >
-            Start Finding Leads
-            <svg className="w-6 h-6 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-            </svg>
-          </Link>
-        </div>
-
-        {/* Testimonial Carousel */}
-        <div className="relative z-10 mt-16">
+          {/* Testimonial Carousel */}
           <div className="text-center mb-8">
             <h4 className="text-2xl md:text-3xl font-bold text-white mb-2">Real results from beta users</h4>
             <p className="text-sm md:text-base text-orange-100">Our users are seeing incredible engagement on Reddit</p>
           </div>
-          <div className="relative overflow-hidden">
+        </div>
+
+        <div className="relative z-10">
+          <div className="relative overflow-hidden mb-12">
             <div className="flex animate-marquee space-x-6">
               {[
                 { quote: "Closed $1,200 MRR from Reddit leads in my first month. The AI finds people actively looking for solutions like mine.", author: "Marcus Chen", role: "Founder", company: "Shipfast.io", avatar: "https://randomuser.me/api/portraits/men/32.jpg" },
@@ -1239,6 +1230,18 @@ function RedditContent() {
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="text-center pb-4">
+            <Link
+              href="/reddit"
+              className="inline-flex items-center px-10 py-5 bg-white text-orange-600 text-lg font-bold rounded-full hover:bg-orange-50 transition-all shadow-2xl hover:shadow-orange-500/50 transform hover:scale-105"
+            >
+              Start Finding Leads
+              <svg className="w-6 h-6 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            </Link>
           </div>
         </div>
       </div>

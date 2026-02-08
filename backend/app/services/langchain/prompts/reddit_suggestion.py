@@ -23,6 +23,7 @@ REDDIT POST:
 Title: {title}
 Content: {content}
 Subreddit: r/{subreddit_name}
+Author: u/{author}
 Relevancy Analysis: {relevancy_reason}
 
 TASK:
@@ -32,12 +33,13 @@ TASK:
    - Include a subtle call-to-action
 
 2. Generate a direct message (2 sentences):
+   - Address the author by their Reddit username (u/{author}) naturally
    - First sentence: Reference their specific problem/situation
    - Second sentence: Brief mention of how you can help + simple question
    - Keep it friendly and conversational
 
 Return ONLY valid JSON matching this structure:
-{{"suggested_comment": "Have you considered...? We've found that... Feel free to check out [solution].", "suggested_dm": "Hey! Saw your post about struggling with X - that's a common challenge. We've helped others with exactly this, happy to share some tips if you're interested?"}}
+{{"suggested_comment": "Have you considered...? We've found that... Feel free to check out [solution].", "suggested_dm": "Hey u/username! Saw your post about struggling with X - that's a common challenge. We've helped others with exactly this, happy to share some tips if you're interested?"}}
 """
 
 
@@ -50,6 +52,7 @@ def create_suggestion_prompt() -> PromptTemplate:
             "title",
             "content",
             "subreddit_name",
+            "author",
             "relevancy_reason"
         ]
     )

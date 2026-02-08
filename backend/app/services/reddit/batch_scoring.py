@@ -245,6 +245,7 @@ class BatchScoringService:
                         "title": post.get("title", ""),
                         "content": content[:1000],
                         "subreddit_name": post.get("subreddit_name", ""),
+                        "author": post.get("author", ""),
                         "relevancy_reason": post.get("relevancy_reason", "Relevant post")
                     }
                 )

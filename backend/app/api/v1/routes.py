@@ -1404,6 +1404,7 @@ async def generate_lead_suggestions(
         "title": lead.title,
         "content": lead.content,
         "subreddit_name": lead.subreddit_name,
+        "author": lead.author or "",
         "relevancy_reason": lead.relevancy_reason or "Relevant post"
     }
 

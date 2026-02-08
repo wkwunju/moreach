@@ -1209,13 +1209,13 @@ function RedditContent() {
                 { quote: "3 clients worth $4,500 total came from moreach leads. Saves me 10+ hours/week vs manual Reddit hunting.", author: "Sarah Mitchell", role: "CEO", company: "GrowthLab Agency", avatar: "https://randomuser.me/api/portraits/women/44.jpg" },
                 { quote: "15 replies first week, 4 converted to paying users. That's $800/mo recurring from organic Reddit outreach.", author: "Jake Torres", role: "Indie Hacker", company: "LaunchPad Tools", avatar: "https://randomuser.me/api/portraits/men/75.jpg" },
               ].map((story, index) => (
-                <div key={index} className="flex-shrink-0 w-80 h-44 bg-white/10 backdrop-blur-sm rounded-2xl p-5 border border-white/20 flex flex-col">
-                  <p className="text-white text-sm leading-relaxed flex-grow">&ldquo;{story.quote}&rdquo;</p>
+                <div key={index} className="flex-shrink-0 w-96 h-52 bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 flex flex-col">
+                  <p className="text-white text-base leading-relaxed flex-grow">&ldquo;{story.quote}&rdquo;</p>
                   <div className="flex items-center gap-3 mt-4">
                     <img
                       src={story.avatar}
                       alt={story.author}
-                      className="w-9 h-9 rounded-full object-cover border-2 border-white/30"
+                      className="w-10 h-10 rounded-full object-cover border-2 border-white/30"
                     />
                     <div>
                       <div className="text-white font-semibold text-sm">{story.author}</div>

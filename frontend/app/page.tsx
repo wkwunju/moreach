@@ -1194,11 +1194,6 @@ function RedditContent() {
             </div>
           </div>
 
-          {/* Testimonial Carousel */}
-          <div className="text-center mb-8">
-            <h4 className="text-2xl md:text-3xl font-bold text-white mb-2">Real results from beta users</h4>
-            <p className="text-sm md:text-base text-orange-100">Our users are seeing incredible engagement on Reddit</p>
-          </div>
         </div>
 
         <div className="relative z-10">

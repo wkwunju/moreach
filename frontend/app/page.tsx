@@ -1108,7 +1108,7 @@ function InstagramContent() {
           AI-powered discovery platform that helps you find and connect with Instagram influencers who match your brand perfectly.
         </p>
         <Link
-          href={ctaHref}
+          href="/register"
           className="inline-flex items-center px-8 py-4 bg-gray-900 text-white text-xl font-semibold rounded-xl hover:bg-gray-800 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
         >
           Sign Up Now

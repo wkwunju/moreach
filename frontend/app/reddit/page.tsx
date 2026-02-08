@@ -1076,8 +1076,8 @@ function RedditPageContent() {
       <DashboardLayout hideSidebar={step === "leads"}>
         {/* Wrapper for non-leads views */}
         {step !== "leads" && (
-          <div className="p-8">
-            <div className="max-w-7xl mx-auto">
+          <div className="p-4 sm:p-6">
+            <div className="max-w-6xl mx-auto">
               {error && (
                 <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
                   {error}
@@ -1088,17 +1088,17 @@ function RedditPageContent() {
               {step === "campaigns" && (
           <div>
             {/* Page Header Card */}
-            <div className="bg-white rounded-2xl p-4 sm:p-8 mb-6 sm:mb-8 shadow-sm border border-gray-100">
-              <div className="flex items-center gap-3 sm:gap-4">
+            <div className="bg-white rounded-xl p-3 sm:p-5 mb-4 sm:mb-5 shadow-sm border border-gray-100">
+              <div className="flex items-center gap-2.5 sm:gap-3">
                 {/* Reddit Logo */}
                 <img
                   src="https://www.redditstatic.com/desktop2x/img/favicon/android-icon-192x192.png"
                   alt="Reddit"
-                  className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0"
+                  className="w-8 h-8 sm:w-9 sm:h-9 flex-shrink-0"
                 />
                 <div>
-                  <h1 className="text-xl sm:text-3xl font-bold text-gray-900">Reddit Lead Generation</h1>
-                  <p className="text-gray-500 mt-0.5 sm:mt-1 text-sm sm:text-lg">
+                  <h1 className="text-lg sm:text-xl font-bold text-gray-900">Reddit Lead Generation</h1>
+                  <p className="text-gray-400 mt-0.5 text-xs sm:text-sm">
                     AI-powered lead discovery from Reddit
                   </p>
                 </div>
@@ -1106,25 +1106,25 @@ function RedditPageContent() {
             </div>
 
             {/* Your Radars Section */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100">
               {/* Section Header */}
-              <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-100 flex flex-col sm:flex-row gap-3 sm:justify-between sm:items-center bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 bg-gray-900 rounded-xl flex items-center justify-center">
-                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="px-3 sm:px-5 py-3 sm:py-3.5 border-b border-gray-100 flex flex-col sm:flex-row gap-2 sm:justify-between sm:items-center bg-gray-50/50">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
                   </div>
                   <div>
-                    <h2 className="text-base sm:text-lg font-semibold text-gray-900">Your Radars</h2>
-                    <p className="text-xs sm:text-sm text-gray-500">{campaigns.length} active radar{campaigns.length !== 1 ? 's' : ''}</p>
+                    <h2 className="text-sm sm:text-base font-semibold text-gray-900">Your Radars</h2>
+                    <p className="text-xs text-gray-500">{campaigns.length} active radar{campaigns.length !== 1 ? 's' : ''}</p>
                   </div>
                 </div>
                 <button
                   onClick={handleNewRadarClick}
-                  className="w-full sm:w-auto px-4 sm:px-5 py-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium flex items-center justify-center gap-2 shadow-sm text-sm sm:text-base"
+                  className="w-full sm:w-auto px-3 sm:px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium flex items-center justify-center gap-1.5 shadow-sm text-xs sm:text-sm"
                 >
-                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
                   </svg>
                   New Radar
@@ -1132,44 +1132,44 @@ function RedditPageContent() {
               </div>
 
               {/* Radars Content */}
-              <div className="p-4 sm:p-6 pb-6 sm:pb-8">
+              <div className="p-3 sm:p-4 pb-4 sm:pb-5">
                 {loading ? (
-                  <div className="text-center py-16">
-                    <div className="inline-flex items-center gap-3 text-gray-500">
-                      <svg className="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <div className="text-center py-10">
+                    <div className="inline-flex items-center gap-2 text-gray-500">
+                      <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
-                      <span className="text-lg">Loading your radars...</span>
+                      <span className="text-sm">Loading your radars...</span>
                     </div>
                   </div>
                 ) : campaigns.length === 0 ? (
-                  <div className="text-center py-16">
-                    <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="text-center py-10">
+                    <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-3">
+                      <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                       </svg>
                     </div>
-                    <p className="text-gray-600 mb-2 font-medium">No radars yet</p>
-                    <p className="text-gray-400 text-sm mb-6">Create your first radar to start discovering leads</p>
+                    <p className="text-gray-600 mb-1 font-medium text-sm">No radars yet</p>
+                    <p className="text-gray-400 text-xs mb-4">Create your first radar to start discovering leads</p>
                     <button
                       onClick={handleNewRadarClick}
-                      className="px-6 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium"
+                      className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm"
                     >
                       Create Your First Radar
                     </button>
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {campaigns.map((campaign) => (
                       <div
                         key={campaign.id}
-                        className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5 hover:border-gray-300 hover:shadow-md transition-all duration-200"
+                        className="bg-white border border-gray-200 rounded-lg p-3 sm:p-4 hover:border-gray-300 hover:shadow-md transition-all duration-200"
                       >
                         {/* Header: Status Badge + Actions */}
-                        <div className="flex justify-between items-center mb-3">
+                        <div className="flex justify-between items-center mb-2">
                           <span
-                            className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${
                               campaign.status === "ACTIVE"
                                 ? "bg-emerald-100 text-emerald-700"
                                 : campaign.status === "DISCOVERING"
@@ -1180,10 +1180,10 @@ function RedditPageContent() {
                             {campaign.status}
                           </span>
                           {/* Action Buttons */}
-                          <div className="flex gap-2 items-center flex-shrink-0">
+                          <div className="flex gap-1.5 items-center flex-shrink-0">
                             <button
                               onClick={() => handleViewLeads(campaign)}
-                              className="px-4 sm:px-5 py-2 sm:py-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium text-sm"
+                              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-xs"
                             >
                               View Leads
                             </button>
@@ -1191,10 +1191,10 @@ function RedditPageContent() {
                             <div className="relative">
                               <button
                                 onClick={() => setOpenSettingsMenu(openSettingsMenu === campaign.id ? null : campaign.id)}
-                                className="p-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                                className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors"
                                 title="Radar settings"
                               >
-                                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                                 </svg>
                               </button>
@@ -1252,21 +1252,21 @@ function RedditPageContent() {
                         </div>
 
                         {/* Business Description - Full width on its own row */}
-                        <h3 className="text-gray-900 font-semibold text-base sm:text-lg mb-3 line-clamp-2">
+                        <h3 className="text-gray-900 font-medium text-sm sm:text-base mb-2 line-clamp-2">
                           {campaign.business_description}
                         </h3>
 
                         {/* Stats Row */}
-                        <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm">
-                          <div className="flex items-center gap-2 text-gray-600 bg-gray-50 px-2.5 sm:px-3 py-1.5 rounded-lg">
-                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
+                          <div className="flex items-center gap-1.5 text-gray-600 bg-gray-50 px-2 py-1 rounded-md">
+                            <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                             </svg>
                             <span className="font-medium">{campaign.subreddits_count}</span>
                             <span className="text-gray-400">subreddits</span>
                           </div>
-                          <div className="flex items-center gap-2 text-gray-600 bg-gray-50 px-2.5 sm:px-3 py-1.5 rounded-lg">
-                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="flex items-center gap-1.5 text-gray-600 bg-gray-50 px-2 py-1 rounded-md">
+                            <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                             </svg>
                             <span className="font-medium">{campaign.leads_count}</span>
@@ -1281,27 +1281,27 @@ function RedditPageContent() {
             </div>
 
             {/* How It Works Section */}
-            <div className="mt-10 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               {/* Section Header */}
-              <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider text-center">How It Works</h3>
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider text-center">How It Works</h3>
               </div>
 
               {/* Steps Grid */}
-              <div className="p-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="p-4 sm:p-5">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* Step 1 */}
-                  <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-6 border border-gray-100 hover:shadow-md transition-shadow">
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
-                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-lg p-4 border border-gray-100 hover:shadow-md transition-shadow">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 bg-gray-900 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
                       </div>
                       <div className="flex-1">
-                        <span className="inline-block px-2 py-0.5 bg-gray-900 text-white text-xs font-semibold rounded-full mb-2">1</span>
-                        <h4 className="text-base font-semibold text-gray-900 mb-2">Discover Communities</h4>
-                        <p className="text-sm text-gray-500 leading-relaxed">
+                        <span className="inline-block px-1.5 py-0.5 bg-gray-900 text-white text-[10px] font-semibold rounded-full mb-1.5">1</span>
+                        <h4 className="text-sm font-semibold text-gray-900 mb-1">Discover Communities</h4>
+                        <p className="text-xs text-gray-500 leading-relaxed">
                           Describe your business and our AI finds relevant subreddits where your potential customers are active.
                         </p>
                       </div>
@@ -1309,17 +1309,17 @@ function RedditPageContent() {
                   </div>
 
                   {/* Step 2 */}
-                  <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-6 border border-gray-100 hover:shadow-md transition-shadow">
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
-                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-lg p-4 border border-gray-100 hover:shadow-md transition-shadow">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 bg-gray-900 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                         </svg>
                       </div>
                       <div className="flex-1">
-                        <span className="inline-block px-2 py-0.5 bg-gray-900 text-white text-xs font-semibold rounded-full mb-2">2</span>
-                        <h4 className="text-base font-semibold text-gray-900 mb-2">Track Posts</h4>
-                        <p className="text-sm text-gray-500 leading-relaxed">
+                        <span className="inline-block px-1.5 py-0.5 bg-gray-900 text-white text-[10px] font-semibold rounded-full mb-1.5">2</span>
+                        <h4 className="text-sm font-semibold text-gray-900 mb-1">Track Posts</h4>
+                        <p className="text-xs text-gray-500 leading-relaxed">
                           We monitor discussions and identify high-intent posts from people looking for solutions like yours.
                         </p>
                       </div>
@@ -1327,17 +1327,17 @@ function RedditPageContent() {
                   </div>
 
                   {/* Step 3 */}
-                  <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl p-6 border border-gray-100 hover:shadow-md transition-shadow">
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
-                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-lg p-4 border border-gray-100 hover:shadow-md transition-shadow">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 bg-gray-900 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                         </svg>
                       </div>
                       <div className="flex-1">
-                        <span className="inline-block px-2 py-0.5 bg-gray-900 text-white text-xs font-semibold rounded-full mb-2">3</span>
-                        <h4 className="text-base font-semibold text-gray-900 mb-2">Engage & Convert</h4>
-                        <p className="text-sm text-gray-500 leading-relaxed">
+                        <span className="inline-block px-1.5 py-0.5 bg-gray-900 text-white text-[10px] font-semibold rounded-full mb-1.5">3</span>
+                        <h4 className="text-sm font-semibold text-gray-900 mb-1">Engage & Convert</h4>
+                        <p className="text-xs text-gray-500 leading-relaxed">
                           Review AI-generated responses and engage with potential customers at the perfect moment.
                         </p>
                       </div>

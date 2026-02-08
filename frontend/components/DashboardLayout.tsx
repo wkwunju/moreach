@@ -91,7 +91,7 @@ export default function DashboardLayout({ children, hideSidebar = false }: Dashb
         <DashboardSidebar user={user} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         {/* Main content */}
-        <main className="flex-1 lg:ml-64 overflow-auto pt-14 lg:pt-0">
+        <main className="flex-1 lg:ml-56 overflow-auto pt-14 lg:pt-0">
           {children}
         </main>
       </div>

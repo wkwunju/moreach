@@ -1792,7 +1792,7 @@ function RedditPageContent() {
                 )}
               </div>
               {/* Desktop Header (lg and above) */}
-              <div className="hidden lg:flex border-b px-6 pt-8 pb-4 items-center justify-between bg-white">
+              <div className="hidden lg:flex border-b px-6 pt-3 pb-3 items-center justify-between bg-white">
                 {/* Back button - shown only between lg and xl when sidebar is hidden */}
                 <button
                   onClick={() => {

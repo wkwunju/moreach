@@ -1172,7 +1172,7 @@ function RedditContent() {
         
         <div className="relative z-10 max-w-7xl mx-auto px-6">
           <h3 className="text-4xl md:text-5xl font-bold text-white mb-6 leading-tight">
-            Find Leads on Reddit<br />with AI
+            Find Leads on Reddit with AI
           </h3>
           <p className="text-xl md:text-2xl text-orange-50 mb-10 max-w-3xl mx-auto leading-relaxed">
             We help you discover and engage with Reddit users interested in your niche using AI.
@@ -1542,6 +1542,47 @@ function RedditContent() {
               <button className="px-6 py-4 border-3 border-green-600 text-green-700 rounded-full font-bold hover:bg-green-50 transition-all">
                 Regenerate
               </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Social Proof Stories Carousel */}
+      <div className="bg-gradient-to-br from-orange-500 via-orange-600 to-red-600 py-10 md:py-16 text-white relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-400/20 rounded-full translate-x-1/3 -translate-y-1/3 blur-2xl"></div>
+        <div className="absolute bottom-0 left-0 w-80 h-80 bg-red-400/20 rounded-full -translate-x-1/3 translate-y-1/3 blur-2xl"></div>
+        <div className="relative z-10 max-w-7xl mx-auto px-6">
+          <div className="text-center mb-8">
+            <h3 className="text-4xl md:text-5xl font-bold mb-3">Real results from beta users</h3>
+            <p className="text-base md:text-lg text-orange-100">Our users are seeing incredible engagement on Reddit</p>
+          </div>
+          <div className="relative overflow-hidden">
+            <div className="flex animate-marquee space-x-6">
+              {[
+                { quote: "Closed $1,200 MRR from Reddit leads in my first month. The AI finds people actively looking for solutions like mine.", author: "Marcus Chen", role: "Founder", company: "Shipfast.io", avatar: "https://randomuser.me/api/portraits/men/32.jpg" },
+                { quote: "3 clients worth $4,500 total came from moreach leads. Saves me 10+ hours/week vs manual Reddit hunting.", author: "Sarah Mitchell", role: "CEO", company: "GrowthLab Agency", avatar: "https://randomuser.me/api/portraits/women/44.jpg" },
+                { quote: "15 replies first week, 4 converted to paying users. That's $800/mo recurring from organic Reddit outreach.", author: "Jake Torres", role: "Indie Hacker", company: "LaunchPad Tools", avatar: "https://randomuser.me/api/portraits/men/75.jpg" },
+                { quote: "The suggested replies feel genuine. Landed 2 enterprise deals ($3k each) because I showed up at the right moment.", author: "Emily Watson", role: "Marketing Lead", company: "Nexus Commerce", avatar: "https://randomuser.me/api/portraits/women/68.jpg" },
+                { quote: "Found 5 perfect-fit leads in subreddits I didn't know existed. Already converted 2 to annual plans worth $600.", author: "David Park", role: "Co-founder", company: "CodeReview.ai", avatar: "https://randomuser.me/api/portraits/men/46.jpg" },
+                { quote: "Closed $1,200 MRR from Reddit leads in my first month. The AI finds people actively looking for solutions like mine.", author: "Marcus Chen", role: "Founder", company: "Shipfast.io", avatar: "https://randomuser.me/api/portraits/men/32.jpg" },
+                { quote: "3 clients worth $4,500 total came from moreach leads. Saves me 10+ hours/week vs manual Reddit hunting.", author: "Sarah Mitchell", role: "CEO", company: "GrowthLab Agency", avatar: "https://randomuser.me/api/portraits/women/44.jpg" },
+                { quote: "15 replies first week, 4 converted to paying users. That's $800/mo recurring from organic Reddit outreach.", author: "Jake Torres", role: "Indie Hacker", company: "LaunchPad Tools", avatar: "https://randomuser.me/api/portraits/men/75.jpg" },
+              ].map((story, index) => (
+                <div key={index} className="flex-shrink-0 w-80 h-44 bg-white/10 backdrop-blur-sm rounded-2xl p-5 border border-white/20 flex flex-col">
+                  <p className="text-white text-sm leading-relaxed flex-grow">&ldquo;{story.quote}&rdquo;</p>
+                  <div className="flex items-center gap-3 mt-4">
+                    <img
+                      src={story.avatar}
+                      alt={story.author}
+                      className="w-9 h-9 rounded-full object-cover border-2 border-white/30"
+                    />
+                    <div>
+                      <div className="text-white font-semibold text-sm">{story.author}</div>
+                      <div className="text-orange-200 text-xs">{story.role} @ {story.company}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

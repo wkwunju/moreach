@@ -4,6 +4,7 @@ import Navigation from "../components/Navigation";
 import GlobeAnimation from "../components/GlobeAnimation";
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { getUser } from "@/lib/auth";
 
 type Platform = "instagram" | "reddit" | "twitter" | "tiktok";
 
@@ -19,6 +20,15 @@ export default function HomePage() {
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annually">("annually");
   const [sloganIndex, setSloganIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // Check if user is logged in - redirect CTA links to dashboard
+  useEffect(() => {
+    const user = getUser();
+    setIsLoggedIn(!!user);
+  }, []);
+
+  const ctaHref = isLoggedIn ? "/reddit" : "/register";
 
   // Rotate slogans every 4 seconds with breathing animation
   useEffect(() => {
@@ -96,7 +106,7 @@ export default function HomePage() {
           {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 mb-8">
             <Link
-              href="/register"
+              href={ctaHref}
                 className="px-10 py-5 bg-gray-900 text-white text-lg font-bold rounded-full hover:bg-gray-800 transition-all shadow-xl text-center"
             >
               Sign Up for Free
@@ -689,7 +699,7 @@ export default function HomePage() {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
-              href="/register"
+              href={ctaHref}
               className="px-8 py-4 bg-white text-gray-900 text-xl font-semibold rounded-xl hover:bg-gray-100 transition shadow-lg"
             >
               Sign Up for Free
@@ -829,7 +839,7 @@ export default function HomePage() {
               </div>
 
               <Link
-                href="/register"
+                href={ctaHref}
                 className="block w-full py-4 text-center bg-gray-900 text-white font-semibold rounded-xl hover:bg-gray-800 transition mt-6"
               >
                 Start 7-Day Free Trial
@@ -923,7 +933,7 @@ export default function HomePage() {
               </div>
 
               <Link
-                href="/register"
+                href={ctaHref}
                 className="block w-full py-4 text-center bg-white text-orange-600 font-semibold rounded-xl hover:bg-orange-50 transition mt-6"
               >
                 Get Started
@@ -1017,7 +1027,7 @@ export default function HomePage() {
               </div>
 
               <Link
-                href="/register"
+                href={ctaHref}
                 className="block w-full py-4 text-center bg-white text-gray-900 font-semibold rounded-xl hover:bg-gray-100 transition mt-6"
               >
                 Get Started
@@ -1062,7 +1072,7 @@ export default function HomePage() {
                 <li><Link href="#platforms" className="hover:text-orange-600 transition font-medium">How It Works</Link></li>
                 <li><Link href="/login" className="hover:text-orange-600 transition font-medium">Sign In</Link></li>
                 <li><Link href="#pricing" className="hover:text-orange-600 transition font-medium">Pricing</Link></li>
-                <li><Link href="/register" className="hover:text-orange-600 transition font-medium">Get Started</Link></li>
+                <li><Link href={ctaHref} className="hover:text-orange-600 transition font-medium">Get Started</Link></li>
               </ul>
             </div>
             <div>
@@ -1098,7 +1108,7 @@ function InstagramContent() {
           AI-powered discovery platform that helps you find and connect with Instagram influencers who match your brand perfectly.
         </p>
         <Link
-          href="/register"
+          href={ctaHref}
           className="inline-flex items-center px-8 py-4 bg-gray-900 text-white text-xl font-semibold rounded-xl hover:bg-gray-800 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
         >
           Sign Up Now

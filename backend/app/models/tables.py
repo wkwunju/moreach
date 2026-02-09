@@ -210,6 +210,7 @@ class RedditCampaign(Base):
     # Relationships
     subreddits = relationship("RedditCampaignSubreddit", back_populates="campaign", cascade="all, delete-orphan")
     leads = relationship("RedditLead", back_populates="campaign", cascade="all, delete-orphan")
+    poll_jobs = relationship("PollJob", back_populates="campaign", cascade="all, delete-orphan")
 
 
 class RedditCampaignSubreddit(Base):
@@ -236,6 +237,13 @@ class RedditCampaignSubreddit(Base):
     campaign = relationship("RedditCampaign", back_populates="subreddits")
 
 
+class PollJobStatus(str, enum.Enum):
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    PARTIAL = "PARTIAL"  # Completed with some errors
+
+
 class RedditLeadStatus(str, enum.Enum):
     NEW = "NEW"  # Just discovered (Inbox)
     CONTACTED = "CONTACTED"  # User commented or DMed
@@ -255,6 +263,7 @@ class RedditLead(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     campaign_id: Mapped[int] = mapped_column(ForeignKey("reddit_campaigns.id"))
+    poll_job_id: Mapped[Optional[int]] = mapped_column(ForeignKey("poll_jobs.id"), nullable=True, index=True)
 
     # Reddit post data - 移除全局唯一约束，改为复合唯一约束（见 __table_args__）
     reddit_post_id: Mapped[str] = mapped_column(String(128), index=True)
@@ -289,6 +298,44 @@ class RedditLead(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     campaign = relationship("RedditCampaign", back_populates="leads")
+    poll_job = relationship("PollJob", back_populates="leads")
+
+
+class PollJob(Base):
+    """
+    Tracks each individual poll run for a campaign.
+    Links leads to the specific job that discovered them.
+    """
+    __tablename__ = "poll_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("reddit_campaigns.id"), index=True)
+
+    # Job status
+    status: Mapped[PollJobStatus] = mapped_column(
+        Enum(PollJobStatus),
+        default=PollJobStatus.RUNNING
+    )
+    trigger: Mapped[str] = mapped_column(String(32), default="manual")  # "manual", "scheduled", "first_poll"
+
+    # Stats
+    subreddits_polled: Mapped[int] = mapped_column(default=0)
+    posts_fetched: Mapped[int] = mapped_column(default=0)
+    posts_scored: Mapped[int] = mapped_column(default=0)
+    leads_created: Mapped[int] = mapped_column(default=0)
+    leads_deleted: Mapped[int] = mapped_column(default=0)
+    suggestions_generated: Mapped[int] = mapped_column(default=0)
+
+    # Error tracking
+    error_message: Mapped[str] = mapped_column(Text, default="")
+
+    # Timestamps
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Relationships
+    campaign = relationship("RedditCampaign", back_populates="poll_jobs")
+    leads = relationship("RedditLead", back_populates="poll_job")
 
 
 # ======= Usage Tracking Models =======

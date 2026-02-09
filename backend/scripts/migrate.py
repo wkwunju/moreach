@@ -90,7 +90,20 @@ def run_migrations():
 
             # Detect actual schema state regardless of alembic_version
             def detect_schema_level():
-                """Detect what migration level the actual schema is at."""
+                """Detect what migration level the actual schema is at.
+
+                Each migration adds specific schema artifacts. Check from newest to oldest:
+                  0004: poll_jobs table + reddit_leads.poll_job_id column
+                  0003: users.is_blocked column
+                  0002: usage_tracking table
+                  0001: baseline (users table exists)
+                """
+                result = conn.execute(text(
+                    "SELECT EXISTS(SELECT 1 FROM information_schema.tables "
+                    "WHERE table_name = 'poll_jobs')"
+                ))
+                has_poll_jobs = result.scalar()
+
                 result = conn.execute(text(
                     "SELECT EXISTS(SELECT 1 FROM information_schema.columns "
                     "WHERE table_name = 'users' AND column_name = 'is_blocked')"
@@ -103,10 +116,13 @@ def run_migrations():
                 ))
                 has_usage_tracking = result.scalar()
 
+                logger.info(f"  - poll_jobs table exists: {has_poll_jobs}")
                 logger.info(f"  - usage_tracking table exists: {has_usage_tracking}")
                 logger.info(f"  - is_blocked column exists: {has_is_blocked}")
 
-                if has_is_blocked:
+                if has_poll_jobs:
+                    return "0004"
+                elif has_is_blocked:
                     return "0003"
                 elif has_usage_tracking:
                     return "0002"

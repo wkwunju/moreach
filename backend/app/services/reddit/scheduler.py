@@ -9,19 +9,17 @@ This service should be called by a cron job or scheduler every hour.
 """
 import logging
 from datetime import datetime, timezone
-from typing import List, Set
+from typing import Set
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.db import SessionLocal
-from app.core.email import send_poll_summary_email
 from app.models.tables import (
     User,
     RedditCampaign,
     RedditCampaignStatus,
-    RedditLead,
     SubscriptionTier,
 )
 from app.services.reddit.polling import RedditPollingService
@@ -126,11 +124,16 @@ def run_scheduled_polls(current_hour: int = None) -> dict:
     }
 
     try:
-        # Get all users with active campaigns
+        # Get all active, non-blocked users with active campaigns
         users_with_campaigns = db.execute(
             select(User)
             .join(RedditCampaign, RedditCampaign.user_id == User.id)
-            .where(RedditCampaign.status == RedditCampaignStatus.ACTIVE)
+            .where(
+                RedditCampaign.status == RedditCampaignStatus.ACTIVE,
+                User.is_active == True,
+                User.is_blocked == False,
+                User.subscription_tier != SubscriptionTier.EXPIRED,
+            )
             .distinct()
         ).scalars().all()
 
@@ -138,6 +141,31 @@ def run_scheduled_polls(current_hour: int = None) -> dict:
 
         for user in users_with_campaigns:
             stats["users_checked"] += 1
+
+            # Check user account status
+            if not user.is_active:
+                logger.debug(f"Skipping user {user.id}: account deactivated")
+                stats["campaigns_skipped"] += 1
+                continue
+
+            if user.is_blocked:
+                logger.debug(f"Skipping user {user.id}: account blocked")
+                stats["campaigns_skipped"] += 1
+                continue
+
+            # Check if subscription/trial has expired by date
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            if (user.subscription_tier == SubscriptionTier.FREE_TRIAL
+                    and user.trial_ends_at and user.trial_ends_at < now):
+                logger.debug(f"Skipping user {user.id}: free trial ended")
+                stats["campaigns_skipped"] += 1
+                continue
+
+            if (user.subscription_tier != SubscriptionTier.FREE_TRIAL
+                    and user.subscription_ends_at and user.subscription_ends_at < now):
+                logger.debug(f"Skipping user {user.id}: subscription ended")
+                stats["campaigns_skipped"] += 1
+                continue
 
             # Check if this user should be polled at this hour
             if not should_poll_now(user.subscription_tier, current_hour):
@@ -162,48 +190,12 @@ def run_scheduled_polls(current_hour: int = None) -> dict:
                         f"Polling campaign {campaign.id} for user {user.id} "
                         f"(tier: {user.subscription_tier.value})"
                     )
-                    summary = polling_service.poll_campaign_immediately(db, campaign.id)
+                    # Email is now handled inside PollEngine (scoped to poll_job_id)
+                    summary = polling_service.poll_campaign_immediately(
+                        db, campaign.id, trigger="scheduled"
+                    )
                     stats["campaigns_polled"] += 1
                     logger.info(f"Campaign {campaign.id} poll completed: {summary}")
-
-                    # Send email notification if leads were created
-                    leads_created = summary.get("total_leads_created", 0)
-                    if leads_created > 0 and user.email:
-                        try:
-                            # Get top leads for this campaign (sorted by score, exclude unscored)
-                            top_leads_query = db.query(RedditLead).filter(
-                                RedditLead.campaign_id == campaign.id,
-                                RedditLead.relevancy_score.isnot(None)
-                            ).order_by(RedditLead.relevancy_score.desc()).limit(10).all()
-
-                            top_leads = [
-                                {
-                                    "title": lead.title,
-                                    "subreddit_name": lead.subreddit_name,
-                                    "relevancy_score": lead.relevancy_score,
-                                    "post_url": lead.post_url
-                                }
-                                for lead in top_leads_query
-                            ]
-
-                            high_quality_count = sum(
-                                1 for lead in top_leads_query
-                                if lead.relevancy_score is not None and lead.relevancy_score >= 80
-                            )
-
-                            send_poll_summary_email(
-                                to_email=user.email,
-                                campaign_name=campaign.business_description[:100],
-                                total_posts_fetched=summary.get("total_posts_found", 0),
-                                total_leads_created=leads_created,
-                                high_quality_count=high_quality_count,
-                                top_leads=top_leads,
-                                campaign_id=campaign.id
-                            )
-                            logger.info(f"Sent poll summary email to {user.email}")
-
-                        except Exception as email_error:
-                            logger.error(f"Error sending email for campaign {campaign.id}: {email_error}")
 
                 except Exception as e:
                     logger.error(

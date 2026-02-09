@@ -210,19 +210,18 @@ def send_poll_summary_email(
     # Build top leads cards - premium minimal design
     top_leads_cards = ""
     for i, lead in enumerate(top_leads[:8]):
-        score = lead.get("relevancy_score", 0)
+        score = int(lead.get("relevancy_score", 0))
 
         title = lead.get("title", "")[:65]
         if len(lead.get("title", "")) > 65:
             title += "..."
 
-        post_url = lead.get("post_url", "#")
         subreddit = lead.get("subreddit_name", "")
 
         top_leads_cards += f"""
                                         <tr>
                                             <td style="padding: 0 0 10px 0;">
-                                                <a href="{post_url}" style="text-decoration: none; display: block;">
+                                                <a href="{settings.FRONTEND_URL}/reddit?view=leads&id={campaign_id}" style="text-decoration: none; display: block;">
                                                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #fafafa; border-radius: 12px; border: 1px solid #f0f0f0;">
                                                         <tr>
                                                             <td style="padding: 14px 16px;">

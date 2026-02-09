@@ -21,6 +21,7 @@ class PlanLimits:
     max_leads_per_month: int  # Max leads per month
     polls_per_day: int  # How many times per day we poll
     max_posts_per_poll: int  # Max total posts to fetch per poll cycle (budget)
+    max_auto_suggestions: int  # Max suggestions auto-generated per poll (rest on-demand)
     plan_name: str  # Display name
     next_tier: Optional[str] = None  # Tier to upgrade to
 
@@ -35,6 +36,7 @@ PLAN_LIMITS = {
         max_leads_per_month=3000,
         polls_per_day=2,
         max_posts_per_poll=150,
+        max_auto_suggestions=5,
         plan_name="Starter",
         next_tier="GROWTH",
     ),
@@ -44,6 +46,7 @@ PLAN_LIMITS = {
         max_leads_per_month=3000,
         polls_per_day=2,
         max_posts_per_poll=150,
+        max_auto_suggestions=5,
         plan_name="Starter",
         next_tier="GROWTH",
     ),
@@ -53,6 +56,7 @@ PLAN_LIMITS = {
         max_leads_per_month=3000,
         polls_per_day=2,
         max_posts_per_poll=150,
+        max_auto_suggestions=5,
         plan_name="Starter",
         next_tier="GROWTH",
     ),
@@ -63,6 +67,7 @@ PLAN_LIMITS = {
         max_leads_per_month=9000,
         polls_per_day=24,
         max_posts_per_poll=300,
+        max_auto_suggestions=10,
         plan_name="Growth",
         next_tier="PRO",
     ),
@@ -72,6 +77,7 @@ PLAN_LIMITS = {
         max_leads_per_month=9000,
         polls_per_day=24,
         max_posts_per_poll=300,
+        max_auto_suggestions=10,
         plan_name="Growth",
         next_tier="PRO",
     ),
@@ -82,6 +88,7 @@ PLAN_LIMITS = {
         max_leads_per_month=30000,
         polls_per_day=24,
         max_posts_per_poll=500,
+        max_auto_suggestions=20,
         plan_name="Pro",
         next_tier=None,
     ),
@@ -91,6 +98,7 @@ PLAN_LIMITS = {
         max_leads_per_month=30000,
         polls_per_day=24,
         max_posts_per_poll=500,
+        max_auto_suggestions=20,
         plan_name="Pro",
         next_tier=None,
     ),
@@ -101,6 +109,7 @@ PLAN_LIMITS = {
         max_leads_per_month=3000,
         polls_per_day=2,
         max_posts_per_poll=150,
+        max_auto_suggestions=5,
         plan_name="Starter",
         next_tier="GROWTH",
     ),
@@ -110,6 +119,7 @@ PLAN_LIMITS = {
         max_leads_per_month=3000,
         polls_per_day=2,
         max_posts_per_poll=150,
+        max_auto_suggestions=5,
         plan_name="Starter",
         next_tier="GROWTH",
     ),
@@ -120,6 +130,7 @@ PLAN_LIMITS = {
         max_leads_per_month=0,
         polls_per_day=0,
         max_posts_per_poll=0,
+        max_auto_suggestions=0,
         plan_name="Expired",
         next_tier="STARTER",
     ),

@@ -807,7 +807,7 @@ def select_subreddits(
                 bg_db = SessionLocal()
                 try:
                     polling_service = RedditPollingService()
-                    summary = polling_service.poll_campaign_immediately(bg_db, campaign_id)
+                    summary = polling_service.poll_campaign_immediately(bg_db, campaign_id, trigger="first_poll")
                     logger.info(f"Auto-first-poll completed for campaign {campaign_id}: {summary}")
                 finally:
                     bg_db.close()

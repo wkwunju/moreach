@@ -315,7 +315,7 @@ def poll_campaign_first(campaign_id: int) -> dict:
         logger.info(f"Starting first poll for campaign {campaign_id} (Celery task)")
 
         polling_service = RedditPollingService()
-        summary = polling_service.poll_campaign_immediately(db, campaign_id)
+        summary = polling_service.poll_campaign_immediately(db, campaign_id, trigger="first_poll")
 
         logger.info(f"First poll completed for campaign {campaign_id}: {summary}")
         return summary

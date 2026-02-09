@@ -19,26 +19,30 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Check if poll_jobs table already exists (e.g. from create_all())
     conn = op.get_bind()
+
+    # Create PollJobStatus enum (use DO/EXCEPTION to handle concurrent creation)
+    # PostgreSQL enums are NOT rolled back on transaction failure, so checkfirst
+    # and IF NOT EXISTS don't work reliably with connection poolers like PgBouncer.
+    conn.execute(sa.text("""
+        DO $$ BEGIN
+            CREATE TYPE polljobstatus AS ENUM ('RUNNING', 'COMPLETED', 'FAILED', 'PARTIAL');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """))
+
+    # Create poll_jobs table if it doesn't exist
     result = conn.execute(sa.text(
         "SELECT EXISTS(SELECT 1 FROM information_schema.tables "
         "WHERE table_name = 'poll_jobs')"
     ))
     if not result.scalar():
-        # Create PollJobStatus enum
-        poll_job_status = sa.Enum(
-            'RUNNING', 'COMPLETED', 'FAILED', 'PARTIAL',
-            name='polljobstatus', create_type=False
-        )
-        poll_job_status.create(op.get_bind(), checkfirst=True)
-
-        # Create poll_jobs table
         op.create_table('poll_jobs',
             sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
             sa.Column('campaign_id', sa.Integer(), nullable=False),
             sa.Column('status', sa.Enum('RUNNING', 'COMPLETED', 'FAILED', 'PARTIAL',
-                                        name='polljobstatus'), nullable=False),
+                                        name='polljobstatus', create_type=False), nullable=False),
             sa.Column('trigger', sa.String(32), server_default='manual', nullable=False),
             sa.Column('subreddits_polled', sa.Integer(), server_default='0', nullable=False),
             sa.Column('posts_fetched', sa.Integer(), server_default='0', nullable=False),
@@ -77,5 +81,11 @@ def downgrade() -> None:
     op.drop_index('ix_poll_jobs_campaign_id', table_name='poll_jobs')
     op.drop_table('poll_jobs')
 
-    poll_job_status = sa.Enum(name='polljobstatus')
-    poll_job_status.drop(op.get_bind(), checkfirst=True)
+    conn = op.get_bind()
+    conn.execute(sa.text("""
+        DO $$ BEGIN
+            DROP TYPE polljobstatus;
+        EXCEPTION
+            WHEN undefined_object THEN null;
+        END $$;
+    """))

@@ -36,10 +36,11 @@ export async function fetchResults(requestId: number): Promise<ResultsResponse> 
 export async function createRedditCampaign(businessDescription: string, pollIntervalHours: number = 6): Promise<RedditCampaign> {
   const response = await authFetch(`${baseUrl}/api/v1/reddit/campaigns`, {
     method: "POST",
-    body: JSON.stringify({ 
+    body: JSON.stringify({
       business_description: businessDescription,
-      poll_interval_hours: pollIntervalHours 
-    })
+      poll_interval_hours: pollIntervalHours
+    }),
+    timeoutMs: 120000,
   });
 
   if (!response.ok) {
@@ -51,7 +52,8 @@ export async function createRedditCampaign(businessDescription: string, pollInte
 
 export async function discoverSubreddits(campaignId: number): Promise<SubredditInfo[]> {
   const response = await authFetch(`${baseUrl}/api/v1/reddit/campaigns/${campaignId}/discover-subreddits`, {
-    cache: "no-store"
+    cache: "no-store",
+    timeoutMs: 120000,
   });
 
   if (!response.ok) {
@@ -429,6 +431,21 @@ export async function generateLeadSuggestions(leadId: number): Promise<{
 
   if (!response.ok) {
     throw new Error("Failed to generate suggestions");
+  }
+
+  return response.json();
+}
+
+export async function analyzeUrl(url: string): Promise<{ description: string; url: string }> {
+  const response = await authFetch(`${baseUrl}/api/v1/reddit/analyze-url`, {
+    method: "POST",
+    body: JSON.stringify({ url }),
+    timeoutMs: 60000,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to analyze URL" }));
+    throw new Error(error.detail || "Failed to analyze URL");
   }
 
   return response.json();

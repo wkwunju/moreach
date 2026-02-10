@@ -19,6 +19,7 @@ import {
   checkSubredditLimit,
   getPlanLimits,
   getPollStatus,
+  analyzeUrl,
   type SSEProgressEvent,
   type SSELeadEvent,
   type SSECompleteEvent,
@@ -352,6 +353,8 @@ function RedditPageContent() {
   const [error, setError] = useState("");
   // Form states
   const [businessDescription, setBusinessDescription] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [analyzingUrl, setAnalyzingUrl] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>("NEW");
   
   // Inbox view states
@@ -458,6 +461,9 @@ function RedditPageContent() {
   // Ref to prevent double API calls in StrictMode
   const initPageCalledRef = useRef(false);
 
+  // Ref to skip pushState when handling popstate (browser back/forward)
+  const isPopstateRef = useRef(false);
+
   // Campaign settings menu state
   const [openSettingsMenu, setOpenSettingsMenu] = useState<number | null>(null);
 
@@ -502,7 +508,12 @@ function RedditPageContent() {
       params.set("id", campaignId.toString());
     }
     const newUrl = params.toString() ? `/reddit?${params.toString()}` : "/reddit";
-    window.history.replaceState({}, "", newUrl);
+    if (isPopstateRef.current) {
+      // Browser back/forward triggered this - don't push new entry
+      isPopstateRef.current = false;
+    } else {
+      window.history.pushState({ step: newStep, campaignId }, "", newUrl);
+    }
   }, []);
 
   // Load campaigns and restore state from URL on mount
@@ -616,6 +627,11 @@ function RedditPageContent() {
         }
 
         setInitialLoadDone(true);
+
+        // Set initial history state so popstate can restore correctly
+        const initialStep = (view as Step) || "campaigns";
+        const initialCampaignId = campaignId ? parseInt(campaignId) : undefined;
+        window.history.replaceState({ step: initialStep, campaignId: initialCampaignId }, "", window.location.href);
       } catch (err) {
         setError("Failed to load radars");
       } finally {
@@ -631,6 +647,42 @@ function RedditPageContent() {
       updateURL(step, currentCampaign?.id);
     }
   }, [step, currentCampaign?.id, initialLoadDone, updateURL]);
+
+  // Handle browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = async (event: PopStateEvent) => {
+      isPopstateRef.current = true;
+      const state = event.state;
+      if (state?.step) {
+        // Restore from pushState data
+        if (state.step === "campaigns") {
+          setStep("campaigns");
+          setCurrentCampaign(null);
+        } else if (state.step === "leads" && state.campaignId) {
+          const campaign = campaigns.find((c) => c.id === state.campaignId);
+          if (campaign) {
+            setCurrentCampaign(campaign);
+            const leadsData = await fetchRedditLeads(campaign.id, "NEW");
+            setLeads(leadsData.leads);
+            setLeadCounts({ new: leadsData.new_leads, contacted: leadsData.contacted_leads });
+            setSelectedLead(getFirstSortedLead(leadsData.leads, "relevancy"));
+            setStep("leads");
+          } else {
+            setStep("campaigns");
+          }
+        } else {
+          setStep(state.step);
+        }
+      } else {
+        // No state - we're at the initial /reddit page
+        setStep("campaigns");
+        setCurrentCampaign(null);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [campaigns, getFirstSortedLead]);
 
   // Load user info on mount
   useEffect(() => {
@@ -1373,6 +1425,62 @@ function RedditPageContent() {
 
               {/* Form Content */}
               <div className="p-8">
+                {/* URL Analysis */}
+                <div className="mb-8 bg-[#FFF4EE] border border-[#FF4500]/20 rounded-xl p-5">
+                  <label className="block text-sm font-semibold text-gray-800 mb-3">
+                    Quick Start — Analyze Your Website
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={websiteUrl}
+                      onChange={(e) => setWebsiteUrl(e.target.value)}
+                      className="flex-1 px-4 py-2.5 border border-[#FF4500]/20 bg-white rounded-xl focus:ring-2 focus:ring-[#FF4500] focus:border-transparent transition-shadow"
+                      placeholder="https://yourwebsite.com"
+                    />
+                    <button
+                      onClick={async () => {
+                        if (!websiteUrl.trim()) return;
+                        setAnalyzingUrl(true);
+                        setError("");
+                        try {
+                          const result = await analyzeUrl(websiteUrl.trim());
+                          setBusinessDescription(result.description);
+                        } catch (err: unknown) {
+                          const message = err instanceof Error ? err.message : "Failed to analyze URL";
+                          setError(message);
+                        } finally {
+                          setAnalyzingUrl(false);
+                        }
+                      }}
+                      disabled={analyzingUrl || !websiteUrl.trim()}
+                      className="px-5 py-2.5 bg-[#FF4500] text-white rounded-xl hover:bg-[#e03d00] disabled:opacity-50 transition-colors font-medium text-sm whitespace-nowrap flex items-center gap-2"
+                    >
+                      {analyzingUrl ? (
+                        <>
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          Analyzing...
+                        </>
+                      ) : (
+                        "Analyze"
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-sm text-[#FF4500]/60 mt-2">
+                    Paste your website URL to auto-generate a business description
+                  </p>
+                </div>
+
+                {/* Divider */}
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="flex-1 border-t border-gray-200" />
+                  <span className="text-xs text-gray-400 uppercase tracking-wide font-medium">or describe manually</span>
+                  <div className="flex-1 border-t border-gray-100" />
+                </div>
+
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-gray-700 mb-3">
                     Describe Your Business

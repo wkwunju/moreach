@@ -118,25 +118,25 @@ export async function refreshUser(): Promise<User | null> {
 }
 
 // API fetch wrapper that automatically includes auth token
-export async function authFetch(url: string, options: RequestInit = {}) {
+export async function authFetch(url: string, options: RequestInit & { timeoutMs?: number } = {}) {
   const token = getToken();
+  const { timeoutMs = 30000, ...fetchOptions } = options;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
+    ...(fetchOptions.headers as Record<string, string>),
   };
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // Add timeout of 30 seconds to prevent infinite loading
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url, {
-      ...options,
+      ...fetchOptions,
       headers,
       signal: controller.signal,
     });

@@ -607,6 +607,106 @@ def get_results(request_id: int, db: Session = Depends(get_db)):
 
 # ======= Reddit Lead Generation Endpoints =======
 
+
+class AnalyzeUrlRequest(BaseModel):
+    url: str
+
+
+class AnalyzeUrlResponse(BaseModel):
+    description: str
+    url: str
+
+
+@router.post("/reddit/analyze-url", response_model=AnalyzeUrlResponse)
+async def analyze_url(
+    payload: AnalyzeUrlRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Analyze a website URL and generate a business description.
+    Uses Playwright headless browser to render JS-heavy sites,
+    then extracts text and uses LLM to generate a description.
+    """
+    import trafilatura
+
+    url = payload.url.strip()
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    # Use Playwright to render the page (handles JS-rendered sites)
+    html = None
+    try:
+        from playwright.async_api import async_playwright
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(url, wait_until="networkidle", timeout=20000)
+            html = await page.content()
+            await browser.close()
+    except Exception as e:
+        logger.warning(f"Playwright failed for {url}: {e}, falling back to httpx")
+
+    # Fallback to httpx if Playwright fails
+    if not html:
+        import httpx
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
+                resp = await client.get(url, headers={
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                })
+                resp.raise_for_status()
+                html = resp.text
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {str(e)}")
+
+    # Extract text content
+    text = trafilatura.extract(html, include_comments=False, include_tables=False)
+    if not text or len(text.strip()) < 30:
+        raise HTTPException(status_code=400, detail="Could not extract enough content from this URL. Please try a different page.")
+
+    # Truncate to avoid excessive LLM input
+    if len(text) > 5000:
+        text = text[:5000]
+
+    # Use LLM to generate business description
+    from app.services.langchain.config import get_llm
+    llm = get_llm()
+
+    prompt = f"""You are helping a business owner create a profile to find potential customers on Reddit.
+
+Analyze the website content below and write a business description from the owner's perspective (use "I" or "We").
+
+Requirements:
+- Sentence 1: What the core product/service is (pick the PRIMARY offering, not every feature)
+- Sentence 2: Who the target customers are and what pain point it solves
+- Sentence 3 (optional): Key differentiator or how it works
+
+Rules:
+- Write as the business owner would describe their own business, e.g. "We build an AI-powered tool that..."
+- Be specific: mention the product name, category, and concrete use case
+- Do NOT list every feature — focus on the main value proposition
+- Only include information that is explicitly present in the content
+- Keep it under 300 characters if possible
+
+Website URL: {url}
+Website content:
+---
+{text}
+---
+
+Write ONLY the business description, nothing else. Write in English."""
+
+    try:
+        result = await llm.ainvoke(prompt)
+        description = result.content.strip()
+    except Exception as e:
+        logger.error(f"LLM error analyzing URL: {e}")
+        raise HTTPException(status_code=500, detail="Failed to analyze website content")
+
+    return AnalyzeUrlResponse(description=description, url=url)
+
+
 @router.post("/reddit/campaigns", response_model=RedditCampaignResponse)
 def create_reddit_campaign(
     payload: RedditCampaignCreate, 

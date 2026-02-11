@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.db import SessionLocal
+from app.core.plan_limits import is_admin_user
 from app.models.tables import (
     User,
     RedditCampaign,
@@ -153,19 +154,21 @@ def run_scheduled_polls(current_hour: int = None) -> dict:
                 stats["campaigns_skipped"] += 1
                 continue
 
-            # Check if subscription/trial has expired by date
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
-            if (user.subscription_tier == SubscriptionTier.FREE_TRIAL
-                    and user.trial_ends_at and user.trial_ends_at < now):
-                logger.debug(f"Skipping user {user.id}: free trial ended")
-                stats["campaigns_skipped"] += 1
-                continue
+            # Admin users bypass subscription and scheduling checks
+            if not is_admin_user(user.id):
+                # Check if subscription/trial has expired by date
+                now = datetime.now(timezone.utc).replace(tzinfo=None)
+                if (user.subscription_tier == SubscriptionTier.FREE_TRIAL
+                        and user.trial_ends_at and user.trial_ends_at < now):
+                    logger.debug(f"Skipping user {user.id}: free trial ended")
+                    stats["campaigns_skipped"] += 1
+                    continue
 
-            if (user.subscription_tier != SubscriptionTier.FREE_TRIAL
-                    and user.subscription_ends_at and user.subscription_ends_at < now):
-                logger.debug(f"Skipping user {user.id}: subscription ended")
-                stats["campaigns_skipped"] += 1
-                continue
+                if (user.subscription_tier != SubscriptionTier.FREE_TRIAL
+                        and user.subscription_ends_at and user.subscription_ends_at < now):
+                    logger.debug(f"Skipping user {user.id}: subscription ended")
+                    stats["campaigns_skipped"] += 1
+                    continue
 
             # Check if this user should be polled at this hour
             if not should_poll_now(user.subscription_tier, current_hour):

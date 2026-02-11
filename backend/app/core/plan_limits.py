@@ -137,8 +137,19 @@ PLAN_LIMITS = {
 }
 
 
-def get_plan_limits(tier: SubscriptionTier) -> PlanLimits:
-    """Get the limits for a subscription tier"""
+def is_admin_user(user_id: int) -> bool:
+    """Check if user is an admin (bypasses all subscription limits)"""
+    from app.core.config import settings
+    if not settings.ADMIN_USER_IDS:
+        return False
+    admin_ids = {int(x.strip()) for x in settings.ADMIN_USER_IDS.split(",") if x.strip()}
+    return user_id in admin_ids
+
+
+def get_plan_limits(tier: SubscriptionTier, user_id: int | None = None) -> PlanLimits:
+    """Get the limits for a subscription tier. Admin users always get PRO limits."""
+    if user_id is not None and is_admin_user(user_id):
+        return PLAN_LIMITS[SubscriptionTier.PRO_MONTHLY]
     return PLAN_LIMITS.get(tier, PLAN_LIMITS[SubscriptionTier.FREE_TRIAL])
 
 

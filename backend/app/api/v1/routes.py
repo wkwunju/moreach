@@ -1781,7 +1781,7 @@ def get_plan_limits_info(
     """
     Get the limits for the user's current plan.
     """
-    limits = get_plan_limits(current_user.subscription_tier)
+    limits = get_plan_limits(current_user.subscription_tier, user_id=current_user.id)
     tier_group = get_tier_group(current_user.subscription_tier)
 
     return {

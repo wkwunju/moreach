@@ -106,6 +106,9 @@ class Settings(BaseSettings):
     STRIPE_PRICE_PRO_MONTHLY: str = ""
     STRIPE_PRICE_PRO_ANNUALLY: str = ""
 
+    # Admin users (bypass all subscription limits)
+    ADMIN_USER_IDS: str = ""  # Comma-separated user IDs, e.g. "1,2"
+
     # Scheduled Polling Configuration
     # Enable/disable scheduled polling (set to False for local development)
     ENABLE_SCHEDULED_POLLING: bool = False

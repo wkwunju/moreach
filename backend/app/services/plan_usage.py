@@ -82,7 +82,7 @@ def get_campaign_subreddit_count(db: Session, campaign_id: int) -> int:
 
 def get_usage_status(db: Session, user: User) -> UsageStatus:
     """Get the current usage status for a user"""
-    limits = get_plan_limits(user.subscription_tier)
+    limits = get_plan_limits(user.subscription_tier, user_id=user.id)
     tier_group = get_tier_group(user.subscription_tier)
     profile_count = get_user_profile_count(db, user.id)
 
@@ -102,7 +102,7 @@ def get_usage_status(db: Session, user: User) -> UsageStatus:
 
 def get_subreddit_limit_status(db: Session, user: User, campaign_id: int) -> SubredditLimitStatus:
     """Get the subreddit limit status for a campaign"""
-    limits = get_plan_limits(user.subscription_tier)
+    limits = get_plan_limits(user.subscription_tier, user_id=user.id)
     tier_group = get_tier_group(user.subscription_tier)
     current_count = get_campaign_subreddit_count(db, campaign_id)
 
@@ -128,7 +128,7 @@ def check_can_create_profile(db: Session, user: User) -> LimitCheckResult:
         LimitCheckResult with allowed=True if user can create,
         or allowed=False with reason and upgrade info if not.
     """
-    limits = get_plan_limits(user.subscription_tier)
+    limits = get_plan_limits(user.subscription_tier, user_id=user.id)
     tier_group = get_tier_group(user.subscription_tier)
     profile_count = get_user_profile_count(db, user.id)
 
@@ -169,7 +169,7 @@ def check_can_add_subreddits(
         LimitCheckResult with allowed=True if user can add,
         or allowed=False with reason and upgrade info if not.
     """
-    limits = get_plan_limits(user.subscription_tier)
+    limits = get_plan_limits(user.subscription_tier, user_id=user.id)
     tier_group = get_tier_group(user.subscription_tier)
     current_count = get_campaign_subreddit_count(db, campaign_id)
 
@@ -212,7 +212,7 @@ def check_subreddit_selection(
     Returns:
         LimitCheckResult
     """
-    limits = get_plan_limits(user.subscription_tier)
+    limits = get_plan_limits(user.subscription_tier, user_id=user.id)
 
     if selected_count > limits.max_subreddits_per_profile:
         return LimitCheckResult(

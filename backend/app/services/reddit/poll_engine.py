@@ -38,7 +38,7 @@ from app.services.reddit.batch_scoring import BatchScoringService, AUTO_SUGGESTI
 from app.core.email import send_poll_summary_email
 from app.services.usage_tracking import track_api_call
 from app.core.config import settings
-from app.core.plan_limits import get_plan_limits
+from app.core.plan_limits import get_plan_limits, is_admin_user
 
 
 logger = logging.getLogger(__name__)
@@ -121,21 +121,23 @@ class PollEngine:
             await callbacks.on_error(f"User {user.id} account is blocked")
             raise ValueError(f"User {user.id} account is blocked")
 
-        if user.subscription_tier == SubscriptionTier.EXPIRED:
-            await callbacks.on_error(f"User {user.id} subscription has expired")
-            raise ValueError(f"User {user.id} subscription has expired")
+        # Admin users bypass all subscription checks
+        if not is_admin_user(user.id):
+            if user.subscription_tier == SubscriptionTier.EXPIRED:
+                await callbacks.on_error(f"User {user.id} subscription has expired")
+                raise ValueError(f"User {user.id} subscription has expired")
 
-        # Check if subscription/trial has actually expired by date
-        now = datetime.utcnow()
-        if (user.subscription_tier == SubscriptionTier.FREE_TRIAL
-                and user.trial_ends_at and user.trial_ends_at < now):
-            await callbacks.on_error(f"User {user.id} free trial has ended")
-            raise ValueError(f"User {user.id} free trial has ended")
+            # Check if subscription/trial has actually expired by date
+            now = datetime.utcnow()
+            if (user.subscription_tier == SubscriptionTier.FREE_TRIAL
+                    and user.trial_ends_at and user.trial_ends_at < now):
+                await callbacks.on_error(f"User {user.id} free trial has ended")
+                raise ValueError(f"User {user.id} free trial has ended")
 
-        if (user.subscription_tier != SubscriptionTier.FREE_TRIAL
-                and user.subscription_ends_at and user.subscription_ends_at < now):
-            await callbacks.on_error(f"User {user.id} subscription has ended")
-            raise ValueError(f"User {user.id} subscription has ended")
+            if (user.subscription_tier != SubscriptionTier.FREE_TRIAL
+                    and user.subscription_ends_at and user.subscription_ends_at < now):
+                await callbacks.on_error(f"User {user.id} subscription has ended")
+                raise ValueError(f"User {user.id} subscription has ended")
 
         active_subreddits = [sub for sub in campaign.subreddits if sub.is_active]
         if not active_subreddits:
@@ -259,7 +261,7 @@ class PollEngine:
     ) -> tuple[List[Dict[str, Any]], Dict[str, int]]:
         """Phase 1: Fetch posts from all active subreddits."""
         user = db.get(User, campaign.user_id)
-        plan_limits = get_plan_limits(user.subscription_tier) if user else None
+        plan_limits = get_plan_limits(user.subscription_tier, user_id=user.id) if user else None
         if plan_limits and plan_limits.max_posts_per_poll > 0:
             posts_per_sub = max(5, plan_limits.max_posts_per_poll // len(active_subreddits))
         else:
@@ -493,7 +495,7 @@ class PollEngine:
 
         # Cap by plan limits to control LLM costs
         user = db.get(User, campaign.user_id)
-        plan_limits = get_plan_limits(user.subscription_tier) if user else None
+        plan_limits = get_plan_limits(user.subscription_tier, user_id=user.id) if user else None
         max_suggestions = plan_limits.max_auto_suggestions if plan_limits else 5
         if len(high_score_leads) > max_suggestions:
             logger.info(

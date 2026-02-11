@@ -186,8 +186,8 @@ function SubscriptionStatus({
     currentTier?.startsWith("GROWTH") ||
     currentTier?.startsWith("PRO");
 
-  const isExpired = currentTier === "EXPIRED" ||
-    (currentTier === "FREE_TRIAL" && !trialActive);
+  const isExpired = !user.is_admin && (currentTier === "EXPIRED" ||
+    (currentTier === "FREE_TRIAL" && !trialActive));
 
   // Get display info based on status
   const getStatusInfo = () => {

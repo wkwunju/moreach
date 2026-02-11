@@ -223,8 +223,8 @@ function SubscriptionStatusCard({
     currentTier?.startsWith("GROWTH") ||
     currentTier?.startsWith("PRO");
 
-  const isExpired = currentTier === "EXPIRED" ||
-    (currentTier === "FREE_TRIAL" && !trialActive);
+  const isExpired = !user.is_admin && (currentTier === "EXPIRED" ||
+    (currentTier === "FREE_TRIAL" && !trialActive));
 
   // Get display info based on status
   const getStatusInfo = () => {
@@ -693,8 +693,9 @@ function RedditPageContent() {
   // Calculate isExpired at component level for use in handlers
   const currentTier = currentUser?.subscription_tier;
   const trialActive = isTrialActive(currentUser);
-  const isExpired = currentTier === "EXPIRED" ||
-    (currentTier === "FREE_TRIAL" && !trialActive);
+  const isAdmin = currentUser?.is_admin ?? false;
+  const isExpired = !isAdmin && (currentTier === "EXPIRED" ||
+    (currentTier === "FREE_TRIAL" && !trialActive));
 
   async function loadCampaigns() {
     try {

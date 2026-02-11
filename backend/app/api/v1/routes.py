@@ -55,6 +55,7 @@ logger = logging.getLogger(__name__)
 
 def user_to_response(user: User) -> UserResponse:
     """Convert a User model to UserResponse schema"""
+    from app.core.plan_limits import is_admin_user
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -70,6 +71,7 @@ def user_to_response(user: User) -> UserResponse:
         subscription_tier=user.subscription_tier.value,
         trial_ends_at=user.trial_ends_at,
         subscription_ends_at=user.subscription_ends_at,
+        is_admin=is_admin_user(user.id),
         created_at=user.created_at,
     )
 

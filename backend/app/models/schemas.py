@@ -42,6 +42,7 @@ class UserResponse(BaseModel):
     subscription_tier: str
     trial_ends_at: Optional[datetime]
     subscription_ends_at: Optional[datetime]
+    is_admin: bool = False
     created_at: datetime
 
 

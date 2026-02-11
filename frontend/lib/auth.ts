@@ -17,6 +17,7 @@ export interface User {
   subscription_tier: SubscriptionTier;
   trial_ends_at: string | null;
   subscription_ends_at: string | null;
+  is_admin: boolean;
   created_at: string;
 }
 

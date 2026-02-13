@@ -80,6 +80,7 @@ def detect_schema_level(conn, has_tables):
     """Detect what migration level the actual schema is at.
 
     Each migration adds specific schema artifacts. Check from newest to oldest:
+      0005: users.last_login_at column
       0004: poll_jobs table + reddit_leads.poll_job_id column
       0003: users.is_blocked column
       0002: usage_tracking table
@@ -87,6 +88,12 @@ def detect_schema_level(conn, has_tables):
     """
     if not has_tables:
         return None
+
+    result = conn.execute(text(
+        "SELECT EXISTS(SELECT 1 FROM information_schema.columns "
+        "WHERE table_name = 'users' AND column_name = 'last_login_at')"
+    ))
+    has_last_login_at = result.scalar()
 
     result = conn.execute(text(
         "SELECT EXISTS(SELECT 1 FROM information_schema.tables "
@@ -106,11 +113,14 @@ def detect_schema_level(conn, has_tables):
     ))
     has_usage_tracking = result.scalar()
 
+    logger.info(f"  - last_login_at column exists: {has_last_login_at}")
     logger.info(f"  - poll_jobs table exists: {has_poll_jobs}")
     logger.info(f"  - usage_tracking table exists: {has_usage_tracking}")
     logger.info(f"  - is_blocked column exists: {has_is_blocked}")
 
-    if has_poll_jobs:
+    if has_last_login_at:
+        return "0005"
+    elif has_poll_jobs:
         return "0004"
     elif has_is_blocked:
         return "0003"

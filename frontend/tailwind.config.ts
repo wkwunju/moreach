@@ -13,8 +13,8 @@ const config: Config = {
         ember: "#eb6a4a"
       },
       fontFamily: {
-        display: ["'Space Grotesk'", "sans-serif"],
-        serif: ["'Fraunces'", "serif"]
+        display: ["var(--font-display)", "sans-serif"],
+        serif: ["var(--font-serif)", "serif"]
       },
       keyframes: {
         floatUp: {

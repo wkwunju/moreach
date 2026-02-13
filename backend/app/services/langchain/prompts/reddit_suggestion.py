@@ -33,13 +33,14 @@ TASK:
    - Include a subtle call-to-action
 
 2. Generate a direct message (2 sentences):
-   - MUST address the author as u/{author} (their actual username) - NEVER use placeholders like [Username] or u/username
-   - First sentence: Reference their specific problem/situation
-   - Second sentence: Brief mention of how you can help + simple question
-   - Keep it friendly and conversational
+   - Start with just "Hey!" - do NOT include the username (no u/username, no [Username])
+   - First sentence: Reference their specific post and the concrete problem they're facing
+   - Second sentence: Clearly state what you offer and how it directly solves their problem, then ask if they'd like to try it or learn more
+   - Be direct and specific about your product/service - don't be vague like "share some insights" or "happy to help"
+   - Keep it friendly but get to the point
 
 Return ONLY valid JSON matching this structure:
-{{"suggested_comment": "Have you considered...? We've found that... Feel free to check out [solution].", "suggested_dm": "Hey u/{author}! Saw your post about struggling with X - that's a common challenge. We've helped others with exactly this, happy to share some tips if you're interested?"}}
+{{"suggested_comment": "Have you considered...? We've found that... Feel free to check out [solution].", "suggested_dm": "Hey! Saw your post about struggling with X. We built [product] that does exactly Y - want me to set you up with a demo?"}}
 """
 
 

@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Header, BackgroundTasks
 from fastapi.responses import JSONResponse
 from starlette.requests import Request as StarletteRequest
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, or_, and_, func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import json
@@ -33,7 +33,9 @@ from app.models.tables import (
     RedditCampaign, RedditCampaignSubreddit, RedditLead,
     RedditCampaignStatus, RedditLeadStatus,
     # Usage tracking
-    APIType
+    APIType, UsageTracking,
+    # Poll tracking
+    PollJob, PollJobStatus,
 )
 from app.services.usage_tracking import track_api_call
 from app.core.config import settings
@@ -162,6 +164,10 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 
     # Create access token (sub must be string)
     access_token = create_access_token(data={"sub": str(user.id)})
+
+    # Track last login
+    user.last_login_at = datetime.utcnow()
+    db.commit()
 
     # Return token and user info
     return TokenResponse(
@@ -353,6 +359,10 @@ def google_auth(payload: GoogleAuthRequest, db: Session = Depends(get_db)):
     # Create access token
     access_token = create_access_token(data={"sub": str(user.id)})
 
+    # Track last login
+    user.last_login_at = datetime.utcnow()
+    db.commit()
+
     return TokenResponse(
         access_token=access_token,
         user=user_to_response(user)
@@ -498,6 +508,10 @@ def google_auth_callback(code: str, db: Session = Depends(get_db)):
 
     # Create access token
     access_token = create_access_token(data={"sub": str(user.id)})
+
+    # Track last login
+    user.last_login_at = datetime.utcnow()
+    db.commit()
 
     # Redirect to frontend with token
     # The frontend will store the token and redirect to dashboard
@@ -1873,4 +1887,219 @@ def get_campaign_subreddit_status(
         "current_plan": status.current_plan,
         "tier_group": status.tier_group,
         "next_tier": status.next_tier,
+    }
+
+
+# ======= Admin Dashboard =======
+
+ADMIN_DASHBOARD_EMAIL = "wkwunju@gmail.com"
+
+
+def require_admin_dashboard(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Only allow the admin email; return 404 to hide endpoint existence."""
+    if current_user.email != ADMIN_DASHBOARD_EMAIL:
+        raise HTTPException(status_code=404, detail="Not found")
+    return current_user
+
+
+@router.get("/admin/dashboard")
+def admin_dashboard(
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_dashboard),
+):
+    now = datetime.utcnow()
+    day7 = now - timedelta(days=7)
+    day30 = now - timedelta(days=30)
+
+    # --- 1. Overview ---
+    total_users = db.query(func.count(User.id)).scalar()
+    active_7d = db.query(func.count(User.id)).filter(User.last_login_at >= day7).scalar()
+    new_7d = db.query(func.count(User.id)).filter(User.created_at >= day7).scalar()
+    new_30d = db.query(func.count(User.id)).filter(User.created_at >= day30).scalar()
+
+    total_campaigns = db.query(func.count(RedditCampaign.id)).scalar()
+    active_campaigns = db.query(func.count(RedditCampaign.id)).filter(
+        RedditCampaign.status == RedditCampaignStatus.ACTIVE
+    ).scalar()
+
+    total_leads = db.query(func.count(RedditLead.id)).scalar()
+    contacted_leads = db.query(func.count(RedditLead.id)).filter(
+        RedditLead.status == RedditLeadStatus.CONTACTED
+    ).scalar()
+    contact_rate = round(contacted_leads / total_leads * 100, 1) if total_leads else 0
+
+    # --- 2. User Growth (last 30 days) ---
+    growth_rows = (
+        db.query(
+            func.date(User.created_at).label("day"),
+            func.count(User.id).label("count"),
+        )
+        .filter(User.created_at >= day30)
+        .group_by(func.date(User.created_at))
+        .order_by(func.date(User.created_at))
+        .all()
+    )
+    user_growth = [{"date": str(r.day), "count": r.count} for r in growth_rows]
+
+    # --- 3. Retention buckets ---
+    active_24h = db.query(func.count(User.id)).filter(
+        User.last_login_at >= now - timedelta(hours=24)
+    ).scalar()
+    active_1_7d = db.query(func.count(User.id)).filter(
+        User.last_login_at >= day7,
+        User.last_login_at < now - timedelta(hours=24),
+    ).scalar()
+    active_7_30d = db.query(func.count(User.id)).filter(
+        User.last_login_at >= day30,
+        User.last_login_at < day7,
+    ).scalar()
+    active_30d_plus = db.query(func.count(User.id)).filter(
+        User.last_login_at < day30,
+    ).scalar()
+    never_logged = db.query(func.count(User.id)).filter(
+        User.last_login_at.is_(None),
+    ).scalar()
+
+    retention = {
+        "active_24h": active_24h,
+        "active_1_7d": active_1_7d,
+        "active_7_30d": active_7_30d,
+        "active_30d_plus": active_30d_plus,
+        "never_logged_in": never_logged,
+    }
+
+    # --- 4. API Usage (last 30 days) ---
+    usage_rows = (
+        db.query(
+            func.date(UsageTracking.date).label("day"),
+            UsageTracking.api_type,
+            func.sum(UsageTracking.call_count).label("calls"),
+            func.sum(UsageTracking.input_tokens).label("input_tokens"),
+            func.sum(UsageTracking.output_tokens).label("output_tokens"),
+        )
+        .filter(UsageTracking.date >= day30)
+        .group_by(func.date(UsageTracking.date), UsageTracking.api_type)
+        .order_by(func.date(UsageTracking.date))
+        .all()
+    )
+    api_usage = [
+        {
+            "date": str(r.day),
+            "api_type": r.api_type.value if hasattr(r.api_type, "value") else str(r.api_type),
+            "calls": r.calls,
+            "input_tokens": r.input_tokens,
+            "output_tokens": r.output_tokens,
+        }
+        for r in usage_rows
+    ]
+
+    # --- 5. LLM Costs ---
+    COST_PER_MILLION = {
+        "LLM_GEMINI": {"input": 0.075, "output": 0.30},
+        "LLM_OPENAI": {"input": 0.15, "output": 0.60},
+        "EMBEDDING": {"input": 0.02, "output": 0.00},
+    }
+    llm_rows = (
+        db.query(
+            UsageTracking.api_type,
+            func.sum(UsageTracking.call_count).label("calls"),
+            func.sum(UsageTracking.input_tokens).label("input_tokens"),
+            func.sum(UsageTracking.output_tokens).label("output_tokens"),
+        )
+        .filter(UsageTracking.api_type.in_([APIType.LLM_GEMINI, APIType.LLM_OPENAI, APIType.EMBEDDING]))
+        .group_by(UsageTracking.api_type)
+        .all()
+    )
+    llm_costs = []
+    for r in llm_rows:
+        key = r.api_type.value if hasattr(r.api_type, "value") else str(r.api_type)
+        rates = COST_PER_MILLION.get(key, {"input": 0, "output": 0})
+        cost = (r.input_tokens / 1_000_000 * rates["input"]) + (r.output_tokens / 1_000_000 * rates["output"])
+        llm_costs.append({
+            "api_type": key,
+            "calls": r.calls,
+            "input_tokens": r.input_tokens,
+            "output_tokens": r.output_tokens,
+            "estimated_cost_usd": round(cost, 4),
+        })
+
+    # --- 6. Per-User Table ---
+    users = db.query(User).order_by(User.created_at.desc()).all()
+    per_user = []
+    for u in users:
+        campaign_count = db.query(func.count(RedditCampaign.id)).filter(
+            RedditCampaign.user_id == u.id,
+            RedditCampaign.status != RedditCampaignStatus.DELETED,
+        ).scalar()
+        lead_count = (
+            db.query(func.count(RedditLead.id))
+            .join(RedditCampaign, RedditLead.campaign_id == RedditCampaign.id)
+            .filter(RedditCampaign.user_id == u.id)
+            .scalar()
+        )
+        contacted_count = (
+            db.query(func.count(RedditLead.id))
+            .join(RedditCampaign, RedditLead.campaign_id == RedditCampaign.id)
+            .filter(RedditCampaign.user_id == u.id, RedditLead.status == RedditLeadStatus.CONTACTED)
+            .scalar()
+        )
+        api_calls = db.query(func.sum(UsageTracking.call_count)).filter(
+            UsageTracking.user_id == u.id
+        ).scalar() or 0
+
+        per_user.append({
+            "id": u.id,
+            "email": u.email,
+            "full_name": u.full_name,
+            "subscription_tier": u.subscription_tier.value,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+            "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
+            "campaigns": campaign_count,
+            "leads": lead_count,
+            "contacted": contacted_count,
+            "contact_rate": round(contacted_count / lead_count * 100, 1) if lead_count else 0,
+            "api_calls": api_calls,
+        })
+
+    # --- 7. Campaign Health (last 7 days) ---
+    poll_total = db.query(func.count(PollJob.id)).filter(PollJob.started_at >= day7).scalar()
+    poll_ok = db.query(func.count(PollJob.id)).filter(
+        PollJob.started_at >= day7, PollJob.status == PollJobStatus.COMPLETED
+    ).scalar()
+    poll_fail = db.query(func.count(PollJob.id)).filter(
+        PollJob.started_at >= day7, PollJob.status == PollJobStatus.FAILED
+    ).scalar()
+    avg_leads = db.query(func.avg(PollJob.leads_created)).filter(
+        PollJob.started_at >= day7, PollJob.status == PollJobStatus.COMPLETED
+    ).scalar()
+
+    campaign_health = {
+        "total_polls_7d": poll_total,
+        "successful": poll_ok,
+        "failed": poll_fail,
+        "success_rate": round(poll_ok / poll_total * 100, 1) if poll_total else 0,
+        "avg_leads_per_poll": round(float(avg_leads), 1) if avg_leads else 0,
+    }
+
+    return {
+        "generated_at": now.isoformat(),
+        "overview": {
+            "total_users": total_users,
+            "active_users_7d": active_7d,
+            "new_users_7d": new_7d,
+            "new_users_30d": new_30d,
+            "total_campaigns": total_campaigns,
+            "active_campaigns": active_campaigns,
+            "total_leads": total_leads,
+            "contacted_leads": contacted_leads,
+            "contact_rate": contact_rate,
+        },
+        "user_growth": user_growth,
+        "retention": retention,
+        "api_usage": api_usage,
+        "llm_costs": llm_costs,
+        "per_user": per_user,
+        "campaign_health": campaign_health,
     }

@@ -392,7 +392,8 @@ function RedditPageContent() {
   const [showAddSubredditModal, setShowAddSubredditModal] = useState(false);
   const [trackedSubreddits, setTrackedSubreddits] = useState<SubredditInfo[]>([]);
   const [recommendedSubreddits, setRecommendedSubreddits] = useState<SubredditInfo[]>([]);
-  const [loadingSubreddits, setLoadingSubreddits] = useState(false);
+  const [loadingTracked, setLoadingTracked] = useState(false);
+  const [loadingRecommended, setLoadingRecommended] = useState(false);
   const [selectedNewSubreddits, setSelectedNewSubreddits] = useState<Set<string>>(new Set());
   
   // Delete campaign modal states
@@ -1016,24 +1017,32 @@ function RedditPageContent() {
     if (!currentCampaign) return;
     
     setShowAddSubredditModal(true);
-    setLoadingSubreddits(true);
-    
-    try {
-      // Fetch tracked subreddits
-      const tracked = await fetchCampaignSubreddits(currentCampaign.id);
-      setTrackedSubreddits(tracked);
-      
-      // Fetch recommended subreddits
-      const recommended = await discoverSubreddits(currentCampaign.id);
-      // Filter out already tracked ones
-      const trackedNames = new Set(tracked.map(s => s.name));
-      const filtered = recommended.filter(s => !trackedNames.has(s.name));
-      setRecommendedSubreddits(filtered);
-    } catch (err) {
-      setError("Failed to load subreddits");
-    } finally {
-      setLoadingSubreddits(false);
-    }
+    setLoadingTracked(true);
+    setLoadingRecommended(true);
+
+    // Fetch tracked and recommended in parallel with independent loading states
+    const trackedPromise = fetchCampaignSubreddits(currentCampaign.id);
+
+    trackedPromise
+      .then((tracked) => {
+        setTrackedSubreddits(tracked);
+        setLoadingTracked(false);
+      })
+      .catch(() => {
+        setError("Failed to load tracked subreddits");
+        setLoadingTracked(false);
+      });
+
+    Promise.all([trackedPromise, discoverSubreddits(currentCampaign.id)])
+      .then(([tracked, recommended]) => {
+        const trackedNames = new Set(tracked.map(s => s.name));
+        setRecommendedSubreddits(recommended.filter(s => !trackedNames.has(s.name)));
+        setLoadingRecommended(false);
+      })
+      .catch(() => {
+        setError("Failed to load recommended subreddits");
+        setLoadingRecommended(false);
+      });
   }
 
   async function handleAddSelectedSubreddits() {
@@ -2416,7 +2425,7 @@ function RedditPageContent() {
                 <div className="w-1/2 border-r overflow-y-auto">
                   <div className="p-6">
                     <h3 className="text-lg font-semibold mb-4">Currently Tracking ({trackedSubreddits.length})</h3>
-                    {loadingSubreddits ? (
+                    {loadingTracked ? (
                       <div className="text-center py-8">
                         <div className="inline-flex items-center gap-2 text-gray-500">
                           <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -2462,7 +2471,7 @@ function RedditPageContent() {
                     <h3 className="text-lg font-semibold mb-4">
                       Recommended for Your Business ({recommendedSubreddits.length})
                     </h3>
-                    {loadingSubreddits ? (
+                    {loadingRecommended ? (
                       <div className="text-center py-8">
                         <div className="inline-flex items-center gap-2 text-gray-500">
                           <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">

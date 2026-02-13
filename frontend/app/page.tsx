@@ -3,24 +3,119 @@
 import Navigation from "../components/Navigation";
 import GlobeAnimation from "../components/GlobeAnimation";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { getUser } from "@/lib/auth";
 
 type Platform = "instagram" | "reddit" | "twitter" | "tiktok";
 
-// Rotating slogans for the hero section
-const SLOGANS = [
-  { line1: "Your product already has demand.", line2: "Let's reach it." },
-  { line1: "No bad products,", line2: "only unbuilt connections." },
-  { line1: "The market is part", line2: "of the product." },
-];
+// Rotating platforms for the hero "Turn [Platform] into Customers"
+const HERO_PLATFORMS = [
+  { name: "Reddit", color: "#FF4500" },
+  { name: "TikTok", color: "#000000" },
+  { name: "Instagram", color: "#E4405F" },
+  { name: "X/Twitter", color: "#000000" },
+] as const;
+
+const SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+function useTextScramble(text: string) {
+  const [displayed, setDisplayed] = useState(text);
+  const frameRef = useRef<number>(0);
+  const prevTextRef = useRef(text);
+
+  const scramble = useCallback((from: string, to: string) => {
+    const length = Math.max(from.length, to.length);
+    const duration = 600; // total ms
+    const startTime = performance.now();
+
+    const step = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+
+      let result = "";
+      for (let i = 0; i < length; i++) {
+        const charProgress = Math.max(0, Math.min(1, (progress - i * 0.06) / 0.4));
+        if (charProgress >= 1) {
+          result += to[i] ?? "";
+        } else if (charProgress <= 0) {
+          result += from[i] ?? SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+        } else {
+          result += SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+        }
+      }
+      setDisplayed(result);
+
+      if (progress < 1) {
+        frameRef.current = requestAnimationFrame(step);
+      } else {
+        setDisplayed(to);
+      }
+    };
+
+    cancelAnimationFrame(frameRef.current);
+    frameRef.current = requestAnimationFrame(step);
+  }, []);
+
+  useEffect(() => {
+    if (text !== prevTextRef.current) {
+      scramble(prevTextRef.current, text);
+      prevTextRef.current = text;
+    }
+  }, [text, scramble]);
+
+  useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
+
+  return displayed;
+}
+
+function PlatformLogo({ platform }: { platform: string }) {
+  const iconSize = "w-8 h-8 md:w-9 md:h-9";
+  const boxBase = "w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center shrink-0";
+  switch (platform) {
+    case "Reddit":
+      return (
+        <span className={`${boxBase} bg-orange-500`}>
+          <svg className={iconSize} fill="white" viewBox="0 0 24 24">
+            <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/>
+          </svg>
+        </span>
+      );
+    case "TikTok":
+      return (
+        <span className={`${boxBase} bg-gradient-to-br from-cyan-400 via-pink-500 to-purple-600`}>
+          <svg className={iconSize} fill="white" viewBox="0 0 24 24">
+            <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"/>
+          </svg>
+        </span>
+      );
+    case "Instagram":
+      return (
+        <span className={`${boxBase} bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500`}>
+          <svg className={iconSize} fill="white" viewBox="0 0 24 24">
+            <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+          </svg>
+        </span>
+      );
+    case "X":
+      return (
+        <span className={`${boxBase} bg-black`}>
+          <svg className={iconSize} fill="white" viewBox="0 0 24 24">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+        </span>
+      );
+    default:
+      return null;
+  }
+}
 
 export default function HomePage() {
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>("reddit");
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annually">("annually");
-  const [sloganIndex, setSloganIndex] = useState(0);
-  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [platformIndex, setPlatformIndex] = useState(0);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  const scrambledName = useTextScramble(HERO_PLATFORMS[platformIndex].name);
 
   // Check if user is logged in - redirect CTA links to dashboard
   useEffect(() => {
@@ -30,15 +125,11 @@ export default function HomePage() {
 
   const ctaHref = isLoggedIn ? "/reddit" : "/register";
 
-  // Rotate slogans every 4 seconds with breathing animation
+  // Rotate platforms every 3 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      setIsTransitioning(true);
-      setTimeout(() => {
-        setSloganIndex((prev) => (prev + 1) % SLOGANS.length);
-        setIsTransitioning(false);
-      }, 600); // Match the CSS transition duration
-    }, 5000);
+      setPlatformIndex((prev) => (prev + 1) % HERO_PLATFORMS.length);
+    }, 3000);
 
     return () => clearInterval(interval);
   }, []);
@@ -52,55 +143,16 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-[1.618fr_1fr] gap-12 items-center relative z-10 w-full pt-28 pb-20 md:py-20">
           {/* Left Content */}
           <div className="text-left">
-          {/* Main Title - Rotating Slogans */}
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight text-gray-900 min-h-[140px] md:min-h-[160px] lg:min-h-[180px]">
-              <span
-                className={`block transition-all duration-500 ease-in-out ${
-                  isTransitioning
-                    ? "opacity-0 translate-x-8"
-                    : "opacity-100 translate-x-0"
-                }`}
-              >
-                {SLOGANS[sloganIndex].line1}
-              </span>
-              <span
-                className={`block transition-all duration-500 ease-in-out delay-75 ${
-                  isTransitioning
-                    ? "opacity-0 translate-x-8"
-                    : "opacity-100 translate-x-0"
-                }`}
-              >
-                {SLOGANS[sloganIndex].line2}
-              </span>
+          {/* Main Title - Find Users on [Platform] with AI */}
+            <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight text-gray-900">
+              <span className="block">Find Users on</span>
+              <span className="block font-display italic">{scrambledName}</span>
+              <span className="block">with AI.</span>
           </h1>
-
-          {/* Slogan Indicators */}
-          <div className="flex gap-2 mb-6">
-            {SLOGANS.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => {
-                  if (index !== sloganIndex) {
-                    setIsTransitioning(true);
-                    setTimeout(() => {
-                      setSloganIndex(index);
-                      setIsTransitioning(false);
-                    }, 600);
-                  }
-                }}
-                className={`h-1.5 rounded-full transition-all duration-300 ${
-                  index === sloganIndex
-                    ? "w-8 bg-gray-900"
-                    : "w-3 bg-gray-900/30 hover:bg-gray-900/50"
-                }`}
-                aria-label={`View slogan ${index + 1}`}
-              />
-            ))}
-          </div>
 
           {/* Subtitle */}
             <p className="text-lg md:text-xl text-gray-700 mb-10 leading-relaxed max-w-xl">
-              Don't wait for customers to search. Moreach's AI identifies high-intent signals in communities and posts, connecting you to them directly or via influencers.
+              You are building a great product, now you need to reach the right audience. Moreach's AI identifies high-intent signals in communities and posts, and connects them to you.
           </p>
 
           {/* CTA Buttons */}
@@ -1179,18 +1231,18 @@ function RedditContent() {
           </p>
 
           {/* Stats Row */}
-          <div className="grid grid-cols-3 gap-8 max-w-3xl mx-auto mb-16">
+          <div className="grid grid-cols-3 gap-4 md:gap-8 max-w-3xl mx-auto mb-16">
             <div className="text-center">
-              <div className="text-5xl md:text-6xl font-bold text-white mb-2">30%</div>
-              <div className="text-base text-orange-100 font-medium">Average Reply Rate</div>
+              <div className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-2">30%</div>
+              <div className="text-sm md:text-base text-orange-100 font-medium">Average Reply Rate</div>
             </div>
             <div className="text-center">
-              <div className="text-5xl md:text-6xl font-bold text-white mb-2">80%</div>
-              <div className="text-base text-orange-100 font-medium">Positive Responses</div>
+              <div className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-2">80%</div>
+              <div className="text-sm md:text-base text-orange-100 font-medium">Positive Responses</div>
             </div>
             <div className="text-center">
-              <div className="text-5xl md:text-6xl font-bold text-white mb-2">100%</div>
-              <div className="text-base text-orange-100 font-medium">Users find customers</div>
+              <div className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-2">100%</div>
+              <div className="text-sm md:text-base text-orange-100 font-medium">Users find customers</div>
             </div>
           </div>
 
@@ -1259,7 +1311,7 @@ function RedditContent() {
           </div>
 
           {/* Two Cards Side by Side */}
-          <div className="grid md:grid-cols-2 gap-6 max-w-lg mx-auto md:max-w-none">
+          <div className="grid lg:grid-cols-2 gap-6">
             {/* Left Card - Real Conversations */}
             <div className="bg-gradient-to-br from-orange-500 to-red-500 rounded-3xl p-8 md:p-10 text-white relative overflow-hidden group hover:shadow-2xl transition-all duration-300">
               <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-500"></div>

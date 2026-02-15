@@ -2,16 +2,18 @@
 Unified Reddit Poll Engine
 
 Single source of truth for the polling pipeline used by both
-frontend (SSE streaming) and backend (scheduler) paths:
+frontend (SSE streaming) and backend (scheduler) paths.
 
-  1. Create PollJob record
-  2. Fetch posts from subreddits
-  3. Save posts to DB (with poll_job_id, score=NULL)
-  4. Batch score all posts
-  5. Delete unscored / low-score posts
-  6. Generate suggestions for high-score posts (90+)
-  7. Update PollJob stats and mark complete
-  8. Send email using ONLY this job's leads
+Per-subreddit pipeline:
+  For each subreddit:
+    1. Fetch posts
+    2. Save to DB (score=NULL)
+    3. Batch score
+    4. Cleanup low-score leads
+    5. Emit surviving leads immediately
+  After all subreddits:
+    6. Generate suggestions for 90+ leads
+    7. Finalize + send email
 """
 import asyncio
 import logging
@@ -84,15 +86,8 @@ class PollEngine:
     ) -> PollJob:
         """
         Execute the full polling pipeline for a campaign.
-
-        Args:
-            db: Database session
-            campaign_id: Campaign to poll
-            trigger: "manual" | "scheduled" | "first_poll"
-            callbacks: Optional callbacks for progress updates (SSE streaming)
-
-        Returns:
-            The completed PollJob record
+        Processes each subreddit independently: fetch → save → score → cleanup → emit.
+        Leads appear on the frontend immediately after each subreddit is processed.
         """
         if callbacks is None:
             callbacks = PollEngineCallbacks()
@@ -155,62 +150,161 @@ class PollEngine:
         db.refresh(poll_job)
 
         try:
-            # --- Phase 1: Fetch posts ---
-            all_posts, subreddit_post_counts = await self._fetch_posts(
-                db, campaign, active_subreddits, poll_job, callbacks
+            # --- Setup ---
+            plan_limits = get_plan_limits(user.subscription_tier, user_id=user.id)
+            if plan_limits and plan_limits.max_posts_per_poll > 0:
+                posts_per_sub = max(5, plan_limits.max_posts_per_poll // len(active_subreddits))
+            else:
+                posts_per_sub = DEFAULT_POSTS_PER_SUBREDDIT
+
+            logger.info(
+                f"Smart budget: {len(active_subreddits)} subreddits x {posts_per_sub} posts "
+                f"(tier budget: {plan_limits.max_posts_per_poll if plan_limits else 'N/A'})"
             )
 
-            if not all_posts:
+            reddit_api_type = (
+                APIType.REDDIT_RAPIDAPI
+                if settings.reddit_api_provider.lower() == "rapidapi"
+                else APIType.REDDIT_APIFY
+            )
+
+            # Dedup set: existing posts in this campaign
+            existing_post_ids = set(
+                row[0] for row in db.execute(
+                    select(RedditLead.reddit_post_id).where(
+                        RedditLead.campaign_id == campaign.id
+                    )
+                ).fetchall()
+            )
+
+            total_posts_fetched = 0
+            total_leads_created = 0
+            total_leads_deleted = 0
+            total_posts_scored = 0
+            subreddit_post_counts: Dict[str, int] = {}
+            num_subs = len(active_subreddits)
+
+            await callbacks.on_progress(
+                phase="fetching", current=0, total=num_subs,
+                message="Starting to fetch posts..."
+            )
+
+            # ==============================================
+            # Per-subreddit pipeline: fetch → save → score → cleanup → emit
+            # ==============================================
+            for i, sub in enumerate(active_subreddits):
+                sub_name = sub.subreddit_name
+
+                # --- Fetch this subreddit ---
+                try:
+                    posts = await asyncio.to_thread(
+                        self.reddit_provider.scrape_subreddit,
+                        subreddit_name=sub_name,
+                        max_posts=posts_per_sub,
+                        sort="new",
+                        time_filter="day"
+                    )
+
+                    new_posts = [p for p in posts if p.get("id") not in existing_post_ids]
+                    for p in new_posts:
+                        existing_post_ids.add(p.get("id"))
+
+                    subreddit_post_counts[sub_name] = len(new_posts)
+                    total_posts_fetched += len(new_posts)
+
+                    # Track Reddit API usage
+                    track_api_call(db, campaign.user_id, reddit_api_type)
+                    await self._update_poll_record(db, sub_name, len(posts))
+
+                    await callbacks.on_progress(
+                        phase="fetching", current=i + 1, total=num_subs,
+                        subreddit=sub_name, posts_found=len(new_posts),
+                        message=f"Fetched {len(new_posts)} new posts from r/{sub_name}"
+                    )
+
+                except Exception as e:
+                    logger.error(f"Error fetching r/{sub_name}: {e}")
+                    await callbacks.on_progress(
+                        phase="fetching", current=i + 1, total=num_subs,
+                        subreddit=sub_name, error=str(e),
+                        message=f"Error fetching r/{sub_name}: {str(e)}"
+                    )
+                    continue
+
+                if not new_posts:
+                    continue
+
+                # --- Save unscored leads for this subreddit ---
+                sub_leads = self._save_unscored_leads(db, campaign.id, poll_job.id, new_posts)
+
+                if not sub_leads:
+                    continue
+
+                # --- Score this subreddit's leads ---
+                await callbacks.on_progress(
+                    phase="scoring", current=i + 1, total=num_subs,
+                    subreddit=sub_name,
+                    message=f"Scoring {len(sub_leads)} posts from r/{sub_name}..."
+                )
+                scored_count = await self._batch_score_leads(
+                    db, campaign, sub_leads, callbacks
+                )
+                total_posts_scored += scored_count
+
+                # --- Cleanup low-score leads from this batch ---
+                kept, deleted = self._cleanup_subreddit_leads(db, sub_leads)
+                total_leads_created += kept
+                total_leads_deleted += deleted
+
+                # --- Emit surviving leads immediately ---
+                for lead in sub_leads:
+                    if lead.relevancy_score is not None and lead.relevancy_score >= MIN_RELEVANCY_SCORE:
+                        await callbacks.on_lead_created(lead)
+
+                logger.info(
+                    f"r/{sub_name}: {kept} leads kept, {deleted} deleted "
+                    f"from {len(new_posts)} posts"
+                )
+
+            # ==============================================
+            # Post-loop: update stats, suggestions, finalize
+            # ==============================================
+
+            if total_posts_fetched == 0:
                 poll_job.status = PollJobStatus.COMPLETED
                 poll_job.completed_at = datetime.utcnow()
+                poll_job.subreddits_polled = num_subs
                 db.commit()
                 stats = {
                     "total_leads": 0,
                     "total_posts_fetched": 0,
-                    "subreddits_polled": len(active_subreddits),
+                    "subreddits_polled": num_subs,
                     "message": "No new posts found"
                 }
                 await callbacks.on_complete(stats)
                 return poll_job
 
-            poll_job.posts_fetched = len(all_posts)
-            poll_job.subreddits_polled = len(active_subreddits)
+            # Update PollJob stats
+            poll_job.posts_fetched = total_posts_fetched
+            poll_job.posts_scored = total_posts_scored
+            poll_job.leads_created = total_leads_created
+            poll_job.leads_deleted = total_leads_deleted
+            poll_job.subreddits_polled = num_subs
             db.commit()
 
-            # --- Phase 2: Save unscored leads ---
-            new_leads = self._save_unscored_leads(db, campaign_id, poll_job.id, all_posts)
-
-            # --- Phase 3: Batch score ---
-            await self._batch_score_leads(db, campaign, poll_job, new_leads, callbacks)
-
-            # --- Phase 4: Cleanup low-score / unscored leads ---
-            self._cleanup_low_score_leads(db, poll_job)
-
-            # --- Emit lead events for surviving leads ---
-            surviving_leads = db.execute(
-                select(RedditLead).where(
-                    RedditLead.poll_job_id == poll_job.id
-                )
-            ).scalars().all()
-            for lead in surviving_leads:
-                await callbacks.on_lead_created(lead)
-
-            # --- Phase 5: Generate suggestions for 90+ ---
+            # --- Generate suggestions for 90+ leads ---
             await self._generate_suggestions(db, campaign, poll_job, callbacks)
 
-            # --- Phase 6: Finalize job ---
+            # --- Finalize job ---
             poll_job.status = PollJobStatus.COMPLETED
             poll_job.completed_at = datetime.utcnow()
-
-            # Update campaign last_poll_at
             campaign.last_poll_at = datetime.utcnow()
             db.commit()
 
-            # --- Phase 7: Send email ---
+            # --- Send email ---
             await self._send_email(db, campaign, poll_job)
 
             # --- Complete ---
-            # Recount final leads for this job
             final_leads = db.execute(
                 select(RedditLead).where(
                     RedditLead.poll_job_id == poll_job.id
@@ -251,89 +345,6 @@ class PollEngine:
             await callbacks.on_error(str(e))
             raise
 
-    async def _fetch_posts(
-        self,
-        db: Session,
-        campaign: RedditCampaign,
-        active_subreddits: list,
-        poll_job: PollJob,
-        callbacks: PollEngineCallbacks,
-    ) -> tuple[List[Dict[str, Any]], Dict[str, int]]:
-        """Phase 1: Fetch posts from all active subreddits."""
-        user = db.get(User, campaign.user_id)
-        plan_limits = get_plan_limits(user.subscription_tier, user_id=user.id) if user else None
-        if plan_limits and plan_limits.max_posts_per_poll > 0:
-            posts_per_sub = max(5, plan_limits.max_posts_per_poll // len(active_subreddits))
-        else:
-            posts_per_sub = DEFAULT_POSTS_PER_SUBREDDIT
-
-        logger.info(
-            f"Smart budget: {len(active_subreddits)} subreddits x {posts_per_sub} posts "
-            f"(tier budget: {plan_limits.max_posts_per_poll if plan_limits else 'N/A'})"
-        )
-
-        await callbacks.on_progress(
-            phase="fetching", current=0, total=len(active_subreddits),
-            message="Starting to fetch posts..."
-        )
-
-        all_posts: List[Dict[str, Any]] = []
-        subreddit_post_counts: Dict[str, int] = {}
-
-        # Get existing post IDs for deduplication
-        existing_post_ids = set(
-            row[0] for row in db.execute(
-                select(RedditLead.reddit_post_id).where(
-                    RedditLead.campaign_id == campaign.id
-                )
-            ).fetchall()
-        )
-
-        for i, sub in enumerate(active_subreddits):
-            try:
-                posts = await asyncio.to_thread(
-                    self.reddit_provider.scrape_subreddit,
-                    subreddit_name=sub.subreddit_name,
-                    max_posts=posts_per_sub,
-                    sort="new",
-                    time_filter="day"
-                )
-
-                new_posts = [p for p in posts if p.get("id") not in existing_post_ids]
-                all_posts.extend(new_posts)
-                subreddit_post_counts[sub.subreddit_name] = len(new_posts)
-
-                # Also add new IDs to dedup set for cross-subreddit dedup
-                for p in new_posts:
-                    existing_post_ids.add(p.get("id"))
-
-                # Track Reddit API usage
-                reddit_api_type = (
-                    APIType.REDDIT_RAPIDAPI
-                    if settings.reddit_api_provider.lower() == "rapidapi"
-                    else APIType.REDDIT_APIFY
-                )
-                track_api_call(db, campaign.user_id, reddit_api_type)
-
-                await callbacks.on_progress(
-                    phase="fetching", current=i + 1, total=len(active_subreddits),
-                    subreddit=sub.subreddit_name, posts_found=len(new_posts),
-                    message=f"Fetched {len(new_posts)} new posts from r/{sub.subreddit_name}"
-                )
-
-                # Update global poll record
-                await self._update_poll_record(db, sub.subreddit_name, len(posts))
-
-            except Exception as e:
-                logger.error(f"Error fetching r/{sub.subreddit_name}: {e}")
-                await callbacks.on_progress(
-                    phase="fetching", current=i + 1, total=len(active_subreddits),
-                    subreddit=sub.subreddit_name, error=str(e),
-                    message=f"Error fetching r/{sub.subreddit_name}: {str(e)}"
-                )
-
-        return all_posts, subreddit_post_counts
-
     def _save_unscored_leads(
         self,
         db: Session,
@@ -341,7 +352,7 @@ class PollEngine:
         poll_job_id: int,
         posts: List[Dict[str, Any]],
     ) -> List[RedditLead]:
-        """Phase 2: Save all new posts with score=NULL, linked to poll_job."""
+        """Save posts with score=NULL, linked to poll_job."""
         new_leads = []
         for post in posts:
             try:
@@ -377,18 +388,12 @@ class PollEngine:
         self,
         db: Session,
         campaign: RedditCampaign,
-        poll_job: PollJob,
         leads: List[RedditLead],
         callbacks: PollEngineCallbacks,
-    ) -> None:
-        """Phase 3: Batch score all leads using BatchScoringService."""
+    ) -> int:
+        """Batch score leads using BatchScoringService. Returns scored count."""
         if not leads:
-            return
-
-        await callbacks.on_progress(
-            phase="scoring", current=0, total=len(leads),
-            message=f"Scoring {len(leads)} posts..."
-        )
+            return 0
 
         # Build post dicts for the batch scorer
         post_dicts = []
@@ -441,24 +446,14 @@ class PollEngine:
                 # Not returned by scorer - leave as NULL
                 lead.relevancy_reason = "Score not returned by batch scorer"
 
-        poll_job.posts_scored = scored_count
         db.commit()
-
-        await callbacks.on_progress(
-            phase="scoring", current=len(leads), total=len(leads),
-            message=f"Scored {scored_count} posts"
-        )
-
         logger.info(f"Batch scored {scored_count}/{len(leads)} leads")
+        return scored_count
 
-    def _cleanup_low_score_leads(self, db: Session, poll_job: PollJob) -> None:
-        """Phase 4: Delete leads with score < 50 or still NULL."""
-        leads = db.execute(
-            select(RedditLead).where(
-                RedditLead.poll_job_id == poll_job.id
-            )
-        ).scalars().all()
-
+    def _cleanup_subreddit_leads(
+        self, db: Session, leads: List[RedditLead]
+    ) -> tuple[int, int]:
+        """Delete leads with score < 50 or still NULL. Returns (kept, deleted)."""
         kept = 0
         deleted = 0
         for lead in leads:
@@ -467,12 +462,8 @@ class PollEngine:
                 deleted += 1
             else:
                 kept += 1
-
-        poll_job.leads_created = kept
-        poll_job.leads_deleted = deleted
         db.commit()
-
-        logger.info(f"Cleanup: kept {kept}, deleted {deleted} leads for poll_job {poll_job.id}")
+        return kept, deleted
 
     async def _generate_suggestions(
         self,
@@ -481,7 +472,7 @@ class PollEngine:
         poll_job: PollJob,
         callbacks: PollEngineCallbacks,
     ) -> None:
-        """Phase 5: Generate suggestions for top N 90+ score leads (capped by plan)."""
+        """Generate suggestions for top N 90+ score leads (capped by plan)."""
         high_score_leads = db.execute(
             select(RedditLead).where(
                 RedditLead.poll_job_id == poll_job.id,
@@ -563,7 +554,7 @@ class PollEngine:
         campaign: RedditCampaign,
         poll_job: PollJob,
     ) -> None:
-        """Phase 7: Send email notification scoped to this job's leads."""
+        """Send email notification scoped to this job's leads."""
         try:
             user = db.get(User, campaign.user_id)
             if not user or not user.email:

@@ -183,11 +183,22 @@ export interface SSEProgressEvent {
 
 export interface SSELeadEvent {
   id: number;
+  reddit_post_id: string;
   title: string;
+  content: string;
+  author: string;
+  post_url: string;
+  score: number;
+  num_comments: number;
+  created_utc: number;
   relevancy_score: number;
+  relevancy_reason: string;
+  suggested_comment: string;
+  suggested_dm: string;
   subreddit_name: string;
   has_suggestions: boolean;
-  author?: string;
+  status: string;
+  discovered_at: string;
 }
 
 export interface SSECompleteEvent {

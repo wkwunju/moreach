@@ -36,11 +36,22 @@ class StreamingSSECallbacks(PollEngineCallbacks):
             "type": "lead",
             "data": {
                 "id": lead.id,
-                "title": lead.title[:100],
-                "relevancy_score": lead.relevancy_score,
-                "subreddit_name": lead.subreddit_name,
-                "has_suggestions": lead.has_suggestions,
+                "reddit_post_id": lead.reddit_post_id,
+                "title": lead.title,
+                "content": lead.content,
                 "author": lead.author,
+                "post_url": lead.post_url,
+                "score": lead.score,
+                "num_comments": lead.num_comments,
+                "created_utc": lead.created_utc,
+                "relevancy_score": lead.relevancy_score,
+                "relevancy_reason": lead.relevancy_reason or "",
+                "subreddit_name": lead.subreddit_name,
+                "has_suggestions": lead.has_suggestions or False,
+                "status": lead.status.value if lead.status else "NEW",
+                "discovered_at": lead.discovered_at.isoformat() if lead.discovered_at else None,
+                "suggested_comment": lead.suggested_comment or "",
+                "suggested_dm": lead.suggested_dm or "",
             }
         })
 

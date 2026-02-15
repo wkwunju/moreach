@@ -122,48 +122,50 @@ Example format: ["project management", "saas tools", "productivity", "small busi
         # Take first 5 unique keywords
         return list(dict.fromkeys(keywords))[:5]
     
-    def discover_subreddits(self, search_queries: List[str], limit_per_query: int = 10) -> List[Dict[str, Any]]:
+    def discover_subreddits(self, search_queries: List[str], limit_per_query: int = 10, rounds: int = 2) -> List[Dict[str, Any]]:
         """
-        Search for subreddits using Apify Community Search actor
-        一次性搜索所有关键词（节省API调用）
-        Returns deduplicated list of subreddit metadata
+        Search for subreddits multiple rounds to reduce missed results.
+        Results from all rounds are deduplicated and merged.
         """
-        logger.info(f"Discovering subreddits for {len(search_queries)} queries")
-        
+        logger.info(f"Discovering subreddits for {len(search_queries)} queries ({rounds} rounds)")
+
         if not search_queries:
             return []
-        
-        # 一次性搜索所有关键词（Apify API支持）
-        results = self.reddit_provider.search_communities(
-            search_queries=search_queries, 
-            limit=limit_per_query * len(search_queries)  # 调整总数限制
-        )
-        
+
         all_subreddits = {}  # Use dict to deduplicate by name
-        
-        for subreddit in results:
-            name = subreddit["name"]
-            
-            # Skip NSFW subreddits
-            if subreddit.get("is_nsfw", False):
-                continue
-            
-            # Ensure subscribers is not None
-            if subreddit["subscribers"] is None:
-                subreddit["subscribers"] = 0
-            
-            # Deduplicate: keep subreddit with highest subscriber count
-            if name not in all_subreddits or subreddit["subscribers"] > all_subreddits[name].get("subscribers", 0):
-                all_subreddits[name] = subreddit
-        
+
+        for r in range(rounds):
+            logger.info(f"Discovery round {r + 1}/{rounds}")
+            results = self.reddit_provider.search_communities(
+                search_queries=search_queries,
+                limit=limit_per_query * len(search_queries)
+            )
+
+            for subreddit in results:
+                name = subreddit["name"]
+
+                # Skip NSFW subreddits
+                if subreddit.get("is_nsfw", False):
+                    continue
+
+                # Ensure subscribers is not None
+                if subreddit["subscribers"] is None:
+                    subreddit["subscribers"] = 0
+
+                # Deduplicate: keep subreddit with highest subscriber count
+                if name not in all_subreddits or subreddit["subscribers"] > all_subreddits[name].get("subscribers", 0):
+                    all_subreddits[name] = subreddit
+
+            logger.info(f"Round {r + 1}: got {len(results)} results, {len(all_subreddits)} unique so far")
+
         # Sort by subscribers (descending)
         sorted_subreddits = sorted(
             all_subreddits.values(),
             key=lambda x: x.get("subscribers", 0),
             reverse=True
         )
-        
-        logger.info(f"Discovered {len(sorted_subreddits)} unique subreddits (from 1 API call)")
+
+        logger.info(f"Discovered {len(sorted_subreddits)} unique subreddits (from {rounds} rounds)")
         return sorted_subreddits
     
     def rank_subreddits(

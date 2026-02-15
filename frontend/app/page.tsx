@@ -1230,6 +1230,19 @@ function RedditContent() {
             We help you discover and engage with Reddit users interested in your niche using AI.
           </p>
 
+          {/* Demo Video */}
+          <div className="max-w-3xl mx-auto mb-12">
+            <div className="relative w-full aspect-video rounded-2xl overflow-hidden shadow-2xl">
+              <iframe
+                src="https://www.youtube.com/embed/yDapAkGtj5Y?si=vvTZvnJVgGmuDRud"
+                title="Moreach Demo"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                className="absolute inset-0 w-full h-full"
+              />
+            </div>
+          </div>
+
           {/* Stats Row */}
           <div className="grid grid-cols-3 gap-4 md:gap-8 max-w-3xl mx-auto mb-16">
             <div className="text-center">

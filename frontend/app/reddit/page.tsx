@@ -12,6 +12,7 @@ import {
   pauseCampaign,
   resumeCampaign,
   runCampaignPoll,
+  runCampaignNowStream,
   generateLeadSuggestions,
   fetchCampaignSubreddits,
   deleteCampaign,
@@ -566,10 +567,22 @@ function RedditPageContent() {
                     if (status.leads_created > 0) {
                       setStreamingLeads(status.leads.map(id => ({
                         id,
+                        reddit_post_id: "",
                         title: "",
+                        content: "",
+                        author: "",
+                        post_url: "",
+                        score: 0,
+                        num_comments: 0,
+                        created_utc: 0,
                         relevancy_score: 0,
+                        relevancy_reason: "",
+                        suggested_comment: "",
+                        suggested_dm: "",
                         subreddit_name: "",
                         has_suggestions: false,
+                        status: "NEW",
+                        discovered_at: "",
                       })));
                     }
                   },
@@ -877,51 +890,34 @@ function RedditPageContent() {
   }
 
   async function handleRunNow(campaign: RedditCampaign) {
-    // Use background polling version - continues even if page is closed
+    // Use SSE streaming for real-time lead display
     setIsStreaming(true);
     setStreamProgress(null);
     setStreamingLeads([]);
     setStreamComplete(null);
     setError("");
 
-    const cleanup = runCampaignPoll(
+    const cleanup = runCampaignNowStream(
       campaign.id,
-      // onProgress
-      (status: PollTaskStatus) => {
-        setStreamProgress({
-          phase: status.phase as "fetching" | "scoring" | "suggestions",
-          current: status.current,
-          total: status.total,
-          message: status.message,
-        });
-        // Update leads count from status
-        if (status.leads_created > 0) {
-          // Create minimal lead events from the IDs we have
-          setStreamingLeads(status.leads.map(id => ({
-            id,
-            title: "",
-            relevancy_score: 0,
-            subreddit_name: "",
-            has_suggestions: false,
-          })));
+      (event) => {
+        if (event.type === "progress") {
+          setStreamProgress(event.data);
+        } else if (event.type === "lead") {
+          setStreamingLeads(prev => [...prev, event.data]);
+          // Insert directly into leads list for immediate display
+          setLeads(prev => {
+            if (prev.some(l => l.id === event.data.id)) return prev;
+            return [event.data as unknown as RedditLead, ...prev];
+          });
+        } else if (event.type === "complete") {
+          setStreamComplete(event.data);
+          setIsStreaming(false);
+          loadCampaigns();
+        } else if (event.type === "error") {
+          setError(event.data.message || "Failed to run radar");
+          setIsStreaming(false);
         }
       },
-      // onComplete
-      (status: PollTaskStatus) => {
-        const summary = status.summary || {
-          total_leads: status.leads_created,
-          total_posts_fetched: status.total,
-          subreddits_polled: 0,
-        };
-        setStreamComplete(summary);
-        setIsStreaming(false);
-        // Refresh campaigns and leads
-        loadCampaigns();
-        if (currentCampaign?.id === campaign.id) {
-          handleViewLeads(campaign);
-        }
-      },
-      // onError
       (error: Error) => {
         setError(error.message || "Failed to run radar");
         setIsStreaming(false);
@@ -1957,13 +1953,13 @@ function RedditPageContent() {
                   {currentUser?.id === 1 && currentCampaign && currentCampaign.status === "ACTIVE" && (
                     <button
                       onClick={() => handleRunNow(currentCampaign)}
-                      disabled={loading}
+                      disabled={loading || isStreaming}
                       className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
-                      {loading ? "Running..." : "Fetch Leads"}
+                      {loading || isStreaming ? "Running..." : "Fetch Leads"}
                     </button>
                   )}
                 </div>
@@ -1971,7 +1967,41 @@ function RedditPageContent() {
 
               {/* Leads List */}
               <div className="flex-1 overflow-y-auto mt-1">
-                {loading ? (
+                {/* Inline Streaming Progress Banner */}
+                {isStreaming && (
+                  <div className="mx-3 mt-3 mb-1 bg-orange-50 border border-orange-200 rounded-lg p-3">
+                    <div className="flex items-center gap-3">
+                      <svg className="w-5 h-5 text-orange-500 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-orange-800 truncate">
+                          {streamProgress?.message || "Starting..."}
+                        </p>
+                        {streamProgress && streamProgress.total > 0 && (
+                          <div className="mt-1.5 h-1.5 bg-orange-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-orange-500 rounded-full transition-all duration-500"
+                              style={{ width: `${Math.round((streamProgress.current / streamProgress.total) * 100)}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <span className="text-sm font-semibold text-orange-600">
+                          {streamingLeads.length} leads
+                        </span>
+                        {streamProgress && streamProgress.total > 0 && (
+                          <p className="text-xs text-orange-500">
+                            {streamProgress.current}/{streamProgress.total} subreddits
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {(loading && !isStreaming) ? (
                   <div className="text-center py-16">
                     <div className="max-w-sm mx-auto">
                       {/* Animated icon */}
@@ -1999,7 +2029,7 @@ function RedditPageContent() {
                       </p>
                     </div>
                   </div>
-                ) : leads.filter(l => selectedSubreddit === "all" || l.subreddit_name === selectedSubreddit).length === 0 ? (
+                ) : leads.filter(l => selectedSubreddit === "all" || l.subreddit_name === selectedSubreddit).length === 0 && !isStreaming ? (
                   <div className="text-center py-12">
                     <p className="text-gray-500">No leads found</p>
                     <p className="text-sm text-gray-400 mt-2">
@@ -2563,48 +2593,6 @@ function RedditPageContent() {
             </div>
           </div>
         )}
-
-      {/* Streaming Progress Modal */}
-      {isStreaming && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-6">
-            {/* Simple Progress */}
-            <div className="text-center">
-              {/* Animated icon */}
-              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-6 h-6 text-orange-500 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-              </div>
-
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                {streamProgress?.phase === "fetching" && "Scanning subreddits..."}
-                {streamProgress?.phase === "scoring" && "Analyzing posts..."}
-                {streamProgress?.phase === "suggestions" && "Almost done..."}
-                {!streamProgress && "Starting..."}
-              </h3>
-
-              {/* Progress bar */}
-              {streamProgress && (
-                <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mb-4">
-                  <div
-                    className="h-full bg-orange-500 rounded-full transition-all duration-300"
-                    style={{ width: `${Math.round((streamProgress.current / streamProgress.total) * 100)}%` }}
-                  />
-                </div>
-              )}
-
-              {/* Leads counter */}
-              {streamingLeads.length > 0 && (
-                <p className="text-sm text-gray-600">
-                  <span className="font-semibold text-orange-600">{streamingLeads.length}</span> leads found
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Streaming Complete Modal */}
       {streamComplete && !isStreaming && (

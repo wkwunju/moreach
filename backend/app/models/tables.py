@@ -424,6 +424,10 @@ class SubredditCache(Base):
     first_discovered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Subreddit rules
+    rules_json: Mapped[str] = mapped_column(Text, default="")  # Raw JSON array of rules from Reddit API
+    rules_summary: Mapped[str] = mapped_column(Text, default="")  # LLM-generated summary of rules
+
     # Reserved for future vector embedding
     embedding_status: Mapped[str] = mapped_column(String(32), default="pending")  # pending/processing/done
     embedding_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

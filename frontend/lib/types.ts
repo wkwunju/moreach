@@ -79,6 +79,19 @@ export interface SubredditInfo {
   relevance_score?: number;
 }
 
+export interface SubredditRule {
+  short_name: string;
+  description: string;
+  kind: string;
+  priority: number;
+}
+
+export interface SubredditRulesResponse {
+  subreddit_name: string;
+  rules: SubredditRule[];
+  rules_summary: string;
+}
+
 export interface RedditLead {
   id: number;
   reddit_post_id: string;

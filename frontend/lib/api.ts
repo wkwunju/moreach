@@ -1,4 +1,4 @@
-import type { RequestResponse, ResultsResponse, RedditCampaign, SubredditInfo, RedditLeadsResponse } from "./types";
+import type { RequestResponse, ResultsResponse, RedditCampaign, SubredditInfo, SubredditRulesResponse, RedditLeadsResponse } from "./types";
 import { authFetch } from "./auth";
 
 const baseUrl = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
@@ -81,6 +81,18 @@ export async function fetchCampaignSubreddits(campaignId: number): Promise<Subre
 
   if (!response.ok) {
     throw new Error("Failed to fetch campaign subreddits");
+  }
+
+  return response.json();
+}
+
+export async function fetchSubredditRules(campaignId: number): Promise<SubredditRulesResponse[]> {
+  const response = await authFetch(`${baseUrl}/api/v1/reddit/campaigns/${campaignId}/subreddit-rules`, {
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch subreddit rules");
   }
 
   return response.json();

@@ -277,3 +277,37 @@ class RapidAPIRedditProvider:
         logger.info(f"RapidAPI: Scraped {total_posts} total posts from {len(subreddit_names)} subreddits")
 
         return results
+
+    def fetch_subreddit_rules(self, subreddit_name: str) -> List[Dict[str, Any]]:
+        """
+        Fetch subreddit rules via /subreddit_rules endpoint.
+
+        Args:
+            subreddit_name: Subreddit name (without r/ prefix)
+
+        Returns:
+            List of rule dicts with keys: short_name, description, kind, priority
+        """
+        logger.info(f"RapidAPI: Fetching rules for r/{subreddit_name}")
+
+        data = self._make_request(
+            endpoint="/subreddit_rules",
+            params={"subreddit": subreddit_name},
+            timeout=15
+        )
+
+        if data.get("status") != "success":
+            logger.warning(f"Failed to fetch rules for r/{subreddit_name}")
+            return []
+
+        rules = data.get("body", {}).get("rules", [])
+        # Return only useful fields
+        return [
+            {
+                "short_name": rule.get("short_name", ""),
+                "description": rule.get("description", ""),
+                "kind": rule.get("kind", "all"),
+                "priority": rule.get("priority", 0),
+            }
+            for rule in rules
+        ]

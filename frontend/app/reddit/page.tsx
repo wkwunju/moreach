@@ -15,6 +15,7 @@ import {
   runCampaignNowStream,
   generateLeadSuggestions,
   fetchCampaignSubreddits,
+  fetchSubredditRules,
   deleteCampaign,
   checkCanCreateProfile,
   checkSubredditLimit,
@@ -26,7 +27,7 @@ import {
   type SSECompleteEvent,
   type PollTaskStatus,
 } from "@/lib/api";
-import type { RedditCampaign, SubredditInfo, RedditLead } from "@/lib/types";
+import type { RedditCampaign, SubredditInfo, SubredditRulesResponse, RedditLead } from "@/lib/types";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import DashboardLayout from "@/components/DashboardLayout";
 import UserMenu from "@/components/UserMenu";
@@ -368,6 +369,10 @@ function RedditPageContent() {
   // Sort order state
   const [sortOrder, setSortOrder] = useState<"relevancy" | "time">("relevancy");
 
+  // Subreddit rules
+  const [subredditRules, setSubredditRules] = useState<Map<string, SubredditRulesResponse>>(new Map());
+  const [showRulesDialog, setShowRulesDialog] = useState(false);
+
   // Helper function to get the first lead from a sorted list
   const getFirstSortedLead = useCallback((leadsArray: RedditLead[], order: "relevancy" | "time" = "relevancy"): RedditLead | null => {
     if (leadsArray.length === 0) return null;
@@ -630,6 +635,7 @@ function RedditPageContent() {
               // Select first lead based on sort order (default: relevancy)
               setSelectedLead(getFirstSortedLead(leadsData.leads, "relevancy"));
               setStep("leads");
+              loadSubredditRules(campaign.id);
             } else if (view === "discover") {
               const discovered = await discoverSubreddits(campaign.id);
               setSubreddits(discovered);
@@ -681,6 +687,7 @@ function RedditPageContent() {
             setLeadCounts({ new: leadsData.new_leads, contacted: leadsData.contacted_leads });
             setSelectedLead(getFirstSortedLead(leadsData.leads, "relevancy"));
             setStep("leads");
+            loadSubredditRules(campaign.id);
           } else {
             setStep("campaigns");
           }
@@ -791,6 +798,19 @@ function RedditPageContent() {
     }
   }
 
+  async function loadSubredditRules(campaignId: number) {
+    try {
+      const rulesData = await fetchSubredditRules(campaignId);
+      const rulesMap = new Map<string, SubredditRulesResponse>();
+      for (const r of rulesData) {
+        rulesMap.set(r.subreddit_name, r);
+      }
+      setSubredditRules(rulesMap);
+    } catch (err) {
+      console.error("Failed to load subreddit rules:", err);
+    }
+  }
+
   async function handleViewLeads(campaign: RedditCampaign, status?: string) {
     // Check if trial expired - show billing dialog instead
     if (isExpired) {
@@ -812,6 +832,8 @@ function RedditPageContent() {
       // Select first lead based on current sort order
       setSelectedLead(getFirstSortedLead(data.leads, sortOrder));
       setStep("leads");
+      // Load rules in background
+      loadSubredditRules(campaign.id);
     } catch (err) {
       setError("Failed to load leads");
     } finally {
@@ -1962,6 +1984,19 @@ function RedditPageContent() {
                       {loading || isStreaming ? "Running..." : "Fetch Leads"}
                     </button>
                   )}
+
+                  {/* Subreddit Rules Button */}
+                  {subredditRules.size > 0 && (
+                    <button
+                      onClick={() => setShowRulesDialog(true)}
+                      className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Rules
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -2428,6 +2463,61 @@ function RedditPageContent() {
             )}
           </div>
         )}
+
+        {/* Subreddit Rules Dialog */}
+        {showRulesDialog && (() => {
+          const rulesToShow = selectedSubreddit === "all"
+            ? Array.from(subredditRules.entries())
+            : Array.from(subredditRules.entries()).filter(([name]) => name === selectedSubreddit);
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
+                <div className="px-6 py-4 border-b flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">
+                    {selectedSubreddit === "all" ? "Subreddit Rules" : `r/${selectedSubreddit} Rules`}
+                  </h2>
+                  <button
+                    onClick={() => setShowRulesDialog(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                  {rulesToShow.map(([name, data]) => (
+                    <div key={name} className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                        <h3 className="text-sm font-semibold text-gray-900">r/{name}</h3>
+                        {data.rules_summary && (
+                          <p className="text-xs text-gray-500 mt-1 leading-relaxed">{data.rules_summary}</p>
+                        )}
+                      </div>
+                      {data.rules.length > 0 ? (
+                        <div className="divide-y divide-gray-100">
+                          {data.rules.map((rule, i) => (
+                            <div key={i} className="px-4 py-3">
+                              <div className="text-sm font-medium text-gray-800">{rule.short_name}</div>
+                              <p className="text-xs text-gray-500 mt-1 leading-relaxed">{rule.description}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="px-4 py-3">
+                          <p className="text-sm text-gray-400 italic">No rules available</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {rulesToShow.length === 0 && (
+                    <p className="text-sm text-gray-400 text-center py-8">Loading rules...</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Add Subreddit Modal */}
         {showAddSubredditModal && (

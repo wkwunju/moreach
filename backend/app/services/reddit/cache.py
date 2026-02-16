@@ -156,6 +156,104 @@ class SubredditCacheService:
             SubredditCache.discovery_count.desc()
         ).limit(limit).all()
 
+    def fetch_and_cache_rules(
+        self,
+        db: Session,
+        subreddit_names: List[str],
+    ) -> int:
+        """
+        Fetch rules for subreddits from RapidAPI and generate LLM summaries.
+        Skips subreddits that already have rules cached.
+
+        Returns:
+            Number of subreddits whose rules were fetched
+        """
+        from app.providers.reddit.factory import get_reddit_provider
+        from app.services.llm.client import get_llm_client
+
+        provider = get_reddit_provider()
+        llm_client = get_llm_client()
+        fetched_count = 0
+
+        for name in subreddit_names:
+            # Get or create cache entry
+            cached = db.query(SubredditCache).filter(
+                SubredditCache.name == name
+            ).first()
+
+            # Skip if rules already cached
+            if cached and cached.rules_json:
+                logger.debug(f"Rules already cached for r/{name}, skipping")
+                continue
+
+            # Fetch rules from RapidAPI
+            try:
+                rules = provider.fetch_subreddit_rules(name)
+            except Exception as e:
+                logger.warning(f"Failed to fetch rules for r/{name}: {e}")
+                continue
+
+            if not rules:
+                logger.debug(f"No rules found for r/{name}")
+                # Store empty to avoid re-fetching
+                if cached:
+                    cached.rules_json = "[]"
+                    cached.rules_summary = ""
+                continue
+
+            rules_json_str = json.dumps(rules)
+
+            # Generate LLM summary
+            summary = ""
+            try:
+                rules_text = "\n".join(
+                    f"- {r['short_name']}: {r['description']}"
+                    for r in rules
+                )
+                prompt = (
+                    f"Summarize these subreddit r/{name} rules in 2-3 concise sentences. "
+                    f"Focus on what content is allowed/prohibited and key posting guidelines. "
+                    f"Write in English.\n\nRules:\n{rules_text}"
+                )
+                messages = [{"role": "user", "content": prompt}]
+                response = llm_client.chat(messages, temperature=0.2)
+
+                if isinstance(response, dict):
+                    summary = (
+                        response.get("text")
+                        or response.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    )
+                else:
+                    summary = str(response)
+                summary = summary.strip()
+            except Exception as e:
+                logger.warning(f"Failed to generate rules summary for r/{name}: {e}")
+
+            # Save to cache
+            if cached:
+                cached.rules_json = rules_json_str
+                cached.rules_summary = summary
+            else:
+                # Create minimal cache entry if it doesn't exist yet
+                cache_entry = SubredditCache(
+                    name=name,
+                    rules_json=rules_json_str,
+                    rules_summary=summary,
+                )
+                db.add(cache_entry)
+
+            fetched_count += 1
+            logger.info(f"Cached rules for r/{name} ({len(rules)} rules)")
+
+        try:
+            db.commit()
+            logger.info(f"Successfully cached rules for {fetched_count} subreddits")
+        except Exception as e:
+            logger.error(f"Error committing subreddit rules: {e}")
+            db.rollback()
+
+        return fetched_count
+
     def get_cache_stats(self, db: Session) -> Dict[str, Any]:
         """Get cache statistics"""
         total = db.query(SubredditCache).count()

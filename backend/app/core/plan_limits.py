@@ -146,7 +146,7 @@ def is_admin_user(user_id: int) -> bool:
     return user_id in admin_ids
 
 
-def get_plan_limits(tier: SubscriptionTier, user_id: int | None = None) -> PlanLimits:
+def get_plan_limits(tier: SubscriptionTier, user_id: Optional[int] = None) -> PlanLimits:
     """Get the limits for a subscription tier. Admin users always get PRO limits."""
     if user_id is not None and is_admin_user(user_id):
         return PLAN_LIMITS[SubscriptionTier.PRO_MONTHLY]

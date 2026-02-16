@@ -891,16 +891,44 @@ def select_subreddits(
             subreddits_added += 1
             logger.debug(f"Added subreddit: {subreddit_name}")
     
+    # Collect subreddit names for rules fetching
+    selected_names = []
+    if payload.subreddits:
+        selected_names = [s.get("name", "") for s in payload.subreddits if s.get("name")]
+    elif payload.subreddit_names:
+        selected_names = list(payload.subreddit_names)
+
     # Activate campaign
     campaign.status = RedditCampaignStatus.ACTIVE
     db.commit()
     db.refresh(campaign)  # Refresh to load relationships
-    
+
     # Verify subreddits were saved
     saved_count = db.query(RedditCampaignSubreddit).filter(
         RedditCampaignSubreddit.campaign_id == campaign_id
     ).count()
     logger.info(f"Campaign {campaign_id} activated with {saved_count} subreddits (added: {subreddits_added})")
+
+    # Fetch subreddit rules in background (non-blocking)
+    if selected_names:
+        import threading
+
+        def fetch_rules_thread():
+            from app.core.db import SessionLocal
+            from app.services.reddit.cache import SubredditCacheService
+            try:
+                bg_db = SessionLocal()
+                try:
+                    cache_service = SubredditCacheService()
+                    count = cache_service.fetch_and_cache_rules(bg_db, selected_names)
+                    logger.info(f"Fetched rules for {count} subreddits (campaign {campaign_id})")
+                finally:
+                    bg_db.close()
+            except Exception as e:
+                logger.error(f"Error fetching subreddit rules: {e}", exc_info=True)
+
+        rules_thread = threading.Thread(target=fetch_rules_thread, daemon=True)
+        rules_thread.start()
 
     # Auto-trigger first poll: use Celery in production, threading locally
     try:
@@ -970,6 +998,80 @@ def get_campaign_subreddits(
         )
         for sub in subreddits
     ]
+
+
+@router.get("/reddit/campaigns/{campaign_id}/subreddit-rules")
+def get_subreddit_rules(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get subreddit rules for all active subreddits in a campaign.
+    Returns rules_json and rules_summary from SubredditCache.
+    """
+    campaign = db.get(RedditCampaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    if campaign.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this campaign")
+
+    subreddits = db.query(RedditCampaignSubreddit).filter(
+        RedditCampaignSubreddit.campaign_id == campaign_id,
+        RedditCampaignSubreddit.is_active == True
+    ).all()
+
+    subreddit_names = [s.subreddit_name for s in subreddits]
+
+    # Look up rules from cache
+    from app.models.tables import SubredditCache
+    cached = db.query(SubredditCache).filter(
+        SubredditCache.name.in_(subreddit_names)
+    ).all()
+
+    cache_map = {c.name: c for c in cached}
+
+    # Find subreddits missing rules and trigger background fetch
+    missing_rules = [
+        name for name in subreddit_names
+        if name not in cache_map or not cache_map[name].rules_json
+    ]
+    if missing_rules:
+        import threading
+
+        def fetch_missing_rules():
+            from app.core.db import SessionLocal
+            from app.services.reddit.cache import SubredditCacheService
+            try:
+                bg_db = SessionLocal()
+                try:
+                    cache_service = SubredditCacheService()
+                    count = cache_service.fetch_and_cache_rules(bg_db, missing_rules)
+                    logger.info(f"Background-fetched rules for {count} subreddits")
+                finally:
+                    bg_db.close()
+            except Exception as e:
+                logger.error(f"Error fetching missing subreddit rules: {e}", exc_info=True)
+
+        threading.Thread(target=fetch_missing_rules, daemon=True).start()
+        logger.info(f"Triggered background rules fetch for {len(missing_rules)} subreddits: {missing_rules}")
+
+    result = []
+    for name in subreddit_names:
+        c = cache_map.get(name)
+        rules_json = []
+        if c and c.rules_json:
+            try:
+                rules_json = json.loads(c.rules_json)
+            except json.JSONDecodeError:
+                pass
+        result.append({
+            "subreddit_name": name,
+            "rules": rules_json,
+            "rules_summary": c.rules_summary if c else "",
+        })
+
+    return result
 
 
 @router.get("/reddit/campaigns/{campaign_id}", response_model=RedditCampaignResponse)

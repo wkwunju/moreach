@@ -2962,22 +2962,21 @@ function RedditPageContent() {
                           setGeneratingPost(false);
                         }
                       }}
-                      className="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800"
+                      className={`px-4 py-2 text-sm font-medium rounded-lg ${generatedPost ? "text-gray-700 bg-white border border-gray-300 hover:bg-gray-50" : "text-white bg-gray-900 hover:bg-gray-800"}`}
                     >
                       {generatedPost ? "Regenerate" : "Generate"}
                     </button>
                   )}
-                  {/* Copy All button */}
+                  {/* Copy & Go button */}
                   {generatedPost && (
                     <button
                       onClick={() => {
                         navigator.clipboard.writeText(`${generatedPost.title}\n\n${generatedPost.content}`);
-                        setCopiedField("content");
-                        setTimeout(() => setCopiedField(null), 2000);
+                        window.open(`https://www.reddit.com/r/${generatedPost.subreddit_name}/submit`, "_blank");
                       }}
-                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                      className="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800"
                     >
-                      Copy All
+                      Copy & Go
                     </button>
                   )}
                 </div>

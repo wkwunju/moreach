@@ -515,11 +515,18 @@ class PollEngine:
                 "relevancy_reason": lead.relevancy_reason,
             })
 
+        # Use custom prompts if set on campaign
+        business_desc = campaign.business_description
+        comment_instr = campaign.custom_comment_prompt or ""
+        dm_instr = campaign.custom_dm_prompt or ""
+
         # Generate suggestions via batch service
         results = await self.scoring_service.generate_suggestions_for_high_score(
             post_dicts,
-            campaign.business_description,
-            min_score=AUTO_SUGGESTION_THRESHOLD
+            business_desc,
+            min_score=AUTO_SUGGESTION_THRESHOLD,
+            comment_instructions=comment_instr,
+            dm_instructions=dm_instr,
         )
 
         # Update leads with suggestions

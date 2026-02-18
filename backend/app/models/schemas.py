@@ -145,6 +145,8 @@ class RedditCampaignResponse(BaseModel):
     created_at: datetime
     subreddits_count: int = 0
     leads_count: int = 0
+    custom_comment_prompt: str = ""
+    custom_dm_prompt: str = ""
 
 
 class RedditSubredditSelect(BaseModel):

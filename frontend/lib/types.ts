@@ -68,6 +68,8 @@ export interface RedditCampaign {
   created_at: string;
   subreddits_count: number;
   leads_count: number;
+  custom_comment_prompt: string;
+  custom_dm_prompt: string;
 }
 
 export interface SubredditInfo {

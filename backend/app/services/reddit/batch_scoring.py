@@ -22,7 +22,9 @@ from app.services.langchain.prompts.reddit_batch_scoring import (
 )
 from app.services.langchain.prompts.reddit_suggestion import (
     create_suggestion_prompt,
-    create_suggestion_parser
+    create_suggestion_parser,
+    DEFAULT_COMMENT_INSTRUCTIONS,
+    DEFAULT_DM_INSTRUCTIONS,
 )
 
 
@@ -226,7 +228,9 @@ class BatchScoringService:
         self,
         post: Dict[str, Any],
         business_description: str,
-        semaphore: asyncio.Semaphore
+        semaphore: asyncio.Semaphore,
+        comment_instructions: str = "",
+        dm_instructions: str = "",
     ) -> Dict[str, str]:
         """
         Generate suggestions for a single post (Phase 2).
@@ -246,7 +250,9 @@ class BatchScoringService:
                         "content": content[:1000],
                         "subreddit_name": post.get("subreddit_name", ""),
                         "author": post.get("author", ""),
-                        "relevancy_reason": post.get("relevancy_reason", "Relevant post")
+                        "relevancy_reason": post.get("relevancy_reason", "Relevant post"),
+                        "comment_instructions": comment_instructions or DEFAULT_COMMENT_INSTRUCTIONS,
+                        "dm_instructions": dm_instructions or DEFAULT_DM_INSTRUCTIONS,
                     }
                 )
 
@@ -355,7 +361,9 @@ class BatchScoringService:
         scored_posts: List[Dict[str, Any]],
         business_description: str,
         min_score: int = AUTO_SUGGESTION_THRESHOLD,
-        on_progress: Optional[callable] = None
+        on_progress: Optional[callable] = None,
+        comment_instructions: str = "",
+        dm_instructions: str = "",
     ) -> List[Dict[str, Any]]:
         """
         Phase 2: Auto-generate suggestions ONLY for high-scoring posts (90+).
@@ -366,6 +374,8 @@ class BatchScoringService:
             business_description: Business description
             min_score: Minimum score threshold for auto-generation (default: 90)
             on_progress: Optional callback(current, total) for progress updates
+            comment_instructions: Custom comment prompt (empty = use default)
+            dm_instructions: Custom DM prompt (empty = use default)
 
         Returns:
             Same list with suggestions added to high-scoring posts only
@@ -393,7 +403,9 @@ class BatchScoringService:
 
         async def generate_with_progress(post: Dict, index: int):
             suggestions = await self._generate_suggestion_single(
-                post, business_description, semaphore
+                post, business_description, semaphore,
+                comment_instructions=comment_instructions,
+                dm_instructions=dm_instructions,
             )
             if on_progress:
                 on_progress(index + 1, len(posts_needing_suggestions))
@@ -437,7 +449,9 @@ class BatchScoringService:
     async def generate_suggestion_on_demand(
         self,
         post: Dict[str, Any],
-        business_description: str
+        business_description: str,
+        comment_instructions: str = "",
+        dm_instructions: str = "",
     ) -> Dict[str, str]:
         """
         On-demand suggestion generation for a single post.
@@ -446,12 +460,18 @@ class BatchScoringService:
         Args:
             post: Post dict with title, content, subreddit_name, relevancy_reason
             business_description: Business description
+            comment_instructions: Custom comment prompt (empty = use default)
+            dm_instructions: Custom DM prompt (empty = use default)
 
         Returns:
             Dict with suggested_comment and suggested_dm
         """
         semaphore = asyncio.Semaphore(1)
-        return await self._generate_suggestion_single(post, business_description, semaphore)
+        return await self._generate_suggestion_single(
+            post, business_description, semaphore,
+            comment_instructions=comment_instructions,
+            dm_instructions=dm_instructions,
+        )
 
 
 # Convenience functions for sync usage

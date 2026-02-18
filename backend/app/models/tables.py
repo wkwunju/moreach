@@ -203,7 +203,11 @@ class RedditCampaign(Base):
     
     # LLM generated search queries
     search_queries: Mapped[str] = mapped_column(Text, default="")  # JSON list
-    
+
+    # Custom prompts (optional per-campaign overrides, empty = use default)
+    custom_comment_prompt: Mapped[str] = mapped_column(Text, default="")
+    custom_dm_prompt: Mapped[str] = mapped_column(Text, default="")
+
     # Polling configuration
     poll_interval_hours: Mapped[int] = mapped_column(default=6)  # Poll every X hours
     last_poll_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)

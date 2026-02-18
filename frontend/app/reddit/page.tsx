@@ -16,6 +16,8 @@ import {
   generateLeadSuggestions,
   fetchCampaignSubreddits,
   fetchSubredditRules,
+  updateCampaignPrompts,
+  generateSubredditPost,
   deleteCampaign,
   checkCanCreateProfile,
   checkSubredditLimit,
@@ -38,6 +40,29 @@ import BillingDialog from "@/components/BillingDialog";
 type Step = "campaigns" | "create" | "discover" | "leads";
 
 // Loading messages for subreddit discovery
+// Default prompt instructions (must match backend defaults in reddit_suggestion.py)
+const DEFAULT_COMMENT_PROMPT = `- Directly answer their question or address their problem with actionable advice (2-3 sentences)
+- Share specific tips, techniques, or approaches that would genuinely help
+- Sound like a knowledgeable community member, NOT a business
+- Do NOT mention your product, service, company, or anything promotional
+- Do NOT include any call-to-action or links
+- Focus purely on being helpful — the goal is to build trust and credibility`;
+
+const DEFAULT_DM_PROMPT = `- Start with just "Hey!" - do NOT include the username (no u/username, no [Username])
+- First sentence: Reference their specific post and the concrete problem they're facing
+- Second sentence: Clearly state what you offer and how it directly solves their problem, then ask if they'd like to try it or learn more
+- Be direct and specific about your product/service - don't be vague like "share some insights" or "happy to help"
+- Keep it friendly but get to the point`;
+
+const DEFAULT_POST_PROMPT = `Write an AMA (Ask Me Anything) style post for this subreddit. The post must:
+- Strictly follow ALL subreddit rules listed above
+- Be written as a genuine community member sharing expertise, NOT as a business promotion
+- Introduce yourself and your experience/expertise relevant to the subreddit's topic
+- Invite the community to ask questions
+- Be authentic and conversational
+- Do NOT include any links, product names, or direct promotion
+- Title should follow subreddit conventions (e.g. "[AMA]" prefix if appropriate)`;
+
 const DISCOVERY_MESSAGES = [
   { text: "Analyzing your business description...", icon: "analyze" },
   { text: "Understanding your target audience...", icon: "audience" },
@@ -373,6 +398,57 @@ function RedditPageContent() {
   const [subredditRules, setSubredditRules] = useState<Map<string, SubredditRulesResponse>>(new Map());
   const [showRulesDialog, setShowRulesDialog] = useState(false);
 
+  // Custom prompts dialog
+  const [showPromptDialog, setShowPromptDialog] = useState(false);
+  const [promptBizDesc, setPromptBizDesc] = useState("");
+  const [promptComment, setPromptComment] = useState("");
+  const [promptDm, setPromptDm] = useState("");
+  const [savingPrompts, setSavingPrompts] = useState(false);
+
+  // Create Post dialog
+  const [showCreatePostDialog, setShowCreatePostDialog] = useState(false);
+  const [generatingPost, setGeneratingPost] = useState(false);
+  const [generatedPost, setGeneratedPost] = useState<{ title: string; content: string; subreddit_name: string; instructions_used: string } | null>(null);
+  const [copiedField, setCopiedField] = useState<"title" | "content" | null>(null);
+  const [createPostSubreddit, setCreatePostSubreddit] = useState<string>("");
+  const [createPostPrompt, setCreatePostPrompt] = useState("");
+
+  // Pagination
+  const LEADS_PAGE_SIZE = 200;
+  const [hasMoreLeads, setHasMoreLeads] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const leadsScrollRef = useRef<HTMLDivElement>(null);
+
+  // Load more leads for infinite scroll
+  const loadMoreLeads = useCallback(async () => {
+    if (!currentCampaign || loadingMore || !hasMoreLeads) return;
+    setLoadingMore(true);
+    try {
+      const data = await fetchRedditLeads(currentCampaign.id, filterStatus, LEADS_PAGE_SIZE, leads.length);
+      if (data.leads.length > 0) {
+        setLeads(prev => {
+          const existingIds = new Set(prev.map(l => l.id));
+          const newLeads = data.leads.filter((l: RedditLead) => !existingIds.has(l.id));
+          return [...prev, ...newLeads];
+        });
+      }
+      setHasMoreLeads(data.leads.length >= LEADS_PAGE_SIZE);
+    } catch (err) {
+      console.error("Failed to load more leads:", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [currentCampaign, loadingMore, hasMoreLeads, filterStatus, leads.length]);
+
+  // Scroll handler for infinite scroll
+  const handleLeadsScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const nearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 300;
+    if (nearBottom && hasMoreLeads && !loadingMore) {
+      loadMoreLeads();
+    }
+  }, [hasMoreLeads, loadingMore, loadMoreLeads]);
+
   // Helper function to get the first lead from a sorted list
   const getFirstSortedLead = useCallback((leadsArray: RedditLead[], order: "relevancy" | "time" = "relevancy"): RedditLead | null => {
     if (leadsArray.length === 0) return null;
@@ -422,10 +498,13 @@ function RedditPageContent() {
 
     const refreshLeads = async () => {
       try {
-        const data = await fetchRedditLeads(currentCampaign.id, filterStatus);
+        // Refresh up to current loaded count to detect new leads
+        const refreshSize = Math.max(leads.length, LEADS_PAGE_SIZE);
+        const data = await fetchRedditLeads(currentCampaign.id, filterStatus, refreshSize, 0);
         // Only update if counts changed (new leads scored)
         if (data.new_leads !== leadCounts.new || data.contacted_leads !== leadCounts.contacted || data.leads.length !== leads.length) {
           setLeads(data.leads);
+          setHasMoreLeads(data.leads.length >= refreshSize);
           setLeadCounts({
             new: data.new_leads,
             contacted: data.contacted_leads
@@ -626,8 +705,9 @@ function RedditPageContent() {
             setCurrentCampaign(campaign);
             if (view === "leads") {
               // Load leads for this campaign
-              const leadsData = await fetchRedditLeads(campaign.id, "NEW");
+              const leadsData = await fetchRedditLeads(campaign.id, "NEW", LEADS_PAGE_SIZE, 0);
               setLeads(leadsData.leads);
+              setHasMoreLeads(leadsData.leads.length >= LEADS_PAGE_SIZE);
               setLeadCounts({
                 new: leadsData.new_leads,
                 contacted: leadsData.contacted_leads
@@ -682,8 +762,9 @@ function RedditPageContent() {
           const campaign = campaigns.find((c) => c.id === state.campaignId);
           if (campaign) {
             setCurrentCampaign(campaign);
-            const leadsData = await fetchRedditLeads(campaign.id, "NEW");
+            const leadsData = await fetchRedditLeads(campaign.id, "NEW", LEADS_PAGE_SIZE, 0);
             setLeads(leadsData.leads);
+            setHasMoreLeads(leadsData.leads.length >= LEADS_PAGE_SIZE);
             setLeadCounts({ new: leadsData.new_leads, contacted: leadsData.contacted_leads });
             setSelectedLead(getFirstSortedLead(leadsData.leads, "relevancy"));
             setStep("leads");
@@ -823,8 +904,9 @@ function RedditPageContent() {
       setCurrentCampaign(campaign);
       // Use provided status or fall back to filterStatus
       const statusToUse = status !== undefined ? status : filterStatus;
-      const data = await fetchRedditLeads(campaign.id, statusToUse);
+      const data = await fetchRedditLeads(campaign.id, statusToUse, LEADS_PAGE_SIZE, 0);
       setLeads(data.leads);
+      setHasMoreLeads(data.leads.length >= LEADS_PAGE_SIZE);
       setLeadCounts({
         new: data.new_leads,
         contacted: data.contacted_leads
@@ -844,10 +926,12 @@ function RedditPageContent() {
   async function handleUpdateStatus(leadId: number, status: string): Promise<RedditLead[]> {
     try {
       await updateLeadStatus(leadId, status);
-      // Refresh leads and counts
+      // Refresh leads and counts - reload up to current count
       if (currentCampaign) {
-        const data = await fetchRedditLeads(currentCampaign.id, filterStatus);
+        const refreshSize = Math.max(leads.length, LEADS_PAGE_SIZE);
+        const data = await fetchRedditLeads(currentCampaign.id, filterStatus, refreshSize, 0);
         setLeads(data.leads);
+        setHasMoreLeads(data.leads.length >= refreshSize);
         setLeadCounts({
           new: data.new_leads,
           contacted: data.contacted_leads
@@ -1083,8 +1167,9 @@ function RedditPageContent() {
       setSelectedNewSubreddits(new Set());
       
       // Refresh leads to show new subreddits
-      const data = await fetchRedditLeads(currentCampaign.id, filterStatus);
+      const data = await fetchRedditLeads(currentCampaign.id, filterStatus, LEADS_PAGE_SIZE, 0);
       setLeads(data.leads);
+      setHasMoreLeads(data.leads.length >= LEADS_PAGE_SIZE);
     } catch (err) {
       setError("Failed to add subreddits");
     } finally {
@@ -1763,7 +1848,23 @@ function RedditPageContent() {
 
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-base font-semibold">Inbox</h2>
+                    <h2 className="text-base font-semibold">Radar</h2>
+                    <button
+                      onClick={() => {
+                        if (currentCampaign) {
+                          setPromptBizDesc(currentCampaign.business_description);
+                          setPromptComment(currentCampaign.custom_comment_prompt || DEFAULT_COMMENT_PROMPT);
+                          setPromptDm(currentCampaign.custom_dm_prompt || DEFAULT_DM_PROMPT);
+                        }
+                        setShowPromptDialog(true);
+                      }}
+                      className="p-1 text-gray-400 hover:text-gray-700 rounded"
+                      title="Edit Prompts"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
                     {/* Scanning indicator */}
                     {isStreaming && (
                       <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 text-green-700 rounded-full border border-green-200 animate-pulse">
@@ -1877,6 +1978,22 @@ function RedditPageContent() {
                 </div>
               </div>
 
+              {/* Fetch Leads Button */}
+              {currentUser?.id === 1 && currentCampaign && currentCampaign.status === "ACTIVE" && (
+                <div className="px-4 pb-2">
+                  <button
+                    onClick={() => handleRunNow(currentCampaign)}
+                    disabled={loading || isStreaming}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    {loading || isStreaming ? "Running..." : "Fetch Leads"}
+                  </button>
+                </div>
+              )}
+
               {/* Subscription Status Card */}
               {currentUser && (
                 <SubscriptionStatusCard
@@ -1914,7 +2031,7 @@ function RedditPageContent() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
-                <h2 className="text-lg font-bold flex-1">Inbox</h2>
+                <h2 className="text-lg font-bold flex-1">Radar</h2>
                 {!isStreaming && (
                   <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 text-green-700 rounded-lg border border-green-200">
                     <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
@@ -1954,7 +2071,7 @@ function RedditPageContent() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
                       </svg>
                       <span className="text-gray-700">
-                        {sortOrder === "relevancy" ? "Sort by Relevancy" : "Sort by Time"}
+                        {sortOrder === "relevancy" ? "Score" : "Time"}
                       </span>
                       <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
@@ -1966,24 +2083,10 @@ function RedditPageContent() {
                       onChange={(e) => setSortOrder(e.target.value as "relevancy" | "time")}
                       className="absolute inset-0 w-full opacity-0 cursor-pointer"
                     >
-                      <option value="relevancy">Sort by Relevancy</option>
-                      <option value="time">Sort by Time</option>
+                      <option value="relevancy">Score</option>
+                      <option value="time">Time</option>
                     </select>
                   </div>
-
-                  {/* Run Now Button - hidden in production via env var */}
-                  {currentUser?.id === 1 && currentCampaign && currentCampaign.status === "ACTIVE" && (
-                    <button
-                      onClick={() => handleRunNow(currentCampaign)}
-                      disabled={loading || isStreaming}
-                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      {loading || isStreaming ? "Running..." : "Fetch Leads"}
-                    </button>
-                  )}
 
                   {/* Subreddit Rules Button */}
                   {subredditRules.size > 0 && (
@@ -1997,11 +2100,31 @@ function RedditPageContent() {
                       Rules
                     </button>
                   )}
+                  {/* Create Post Button */}
+                  <button
+                    onClick={() => {
+                      setGeneratedPost(null);
+                      setCreatePostPrompt(DEFAULT_POST_PROMPT);
+                      // If a specific subreddit is selected, use it directly
+                      if (selectedSubreddit !== "all") {
+                        setCreatePostSubreddit(selectedSubreddit);
+                      } else {
+                        setCreatePostSubreddit("");
+                      }
+                      setShowCreatePostDialog(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Create Post
+                  </button>
                 </div>
               </div>
 
               {/* Leads List */}
-              <div className="flex-1 overflow-y-auto mt-1">
+              <div className="flex-1 overflow-y-auto mt-1" ref={leadsScrollRef} onScroll={handleLeadsScroll}>
                 {/* Inline Streaming Progress Banner */}
                 {isStreaming && (
                   <div className="mx-3 mt-3 mb-1 bg-orange-50 border border-orange-200 rounded-lg p-3">
@@ -2227,6 +2350,21 @@ function RedditPageContent() {
                           </div>
                         );
                       })}
+                    {/* Loading indicator for infinite scroll */}
+                    {loadingMore && (
+                      <div className="flex items-center justify-center py-4">
+                        <svg className="w-5 h-5 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        <span className="ml-2 text-sm text-gray-500">Loading more leads...</span>
+                      </div>
+                    )}
+                    {!hasMoreLeads && leads.length > LEADS_PAGE_SIZE && (
+                      <div className="text-center py-3 text-xs text-gray-400">
+                        All leads loaded
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2485,26 +2623,26 @@ function RedditPageContent() {
                     </svg>
                   </button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div className="flex-1 overflow-y-auto p-6 space-y-5">
                   {rulesToShow.map(([name, data]) => (
-                    <div key={name} className="border border-gray-200 rounded-lg overflow-hidden">
-                      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                        <h3 className="text-sm font-semibold text-gray-900">r/{name}</h3>
+                    <div key={name} className="border-2 border-gray-300 rounded-xl overflow-hidden shadow-sm">
+                      <div className="bg-gray-900 px-5 py-3">
+                        <h3 className="text-sm font-bold text-white">r/{name}</h3>
                         {data.rules_summary && (
-                          <p className="text-xs text-gray-500 mt-1 leading-relaxed">{data.rules_summary}</p>
+                          <p className="text-xs text-gray-300 mt-1 leading-relaxed">{data.rules_summary}</p>
                         )}
                       </div>
                       {data.rules.length > 0 ? (
-                        <div className="divide-y divide-gray-100">
+                        <div className="divide-y divide-gray-200">
                           {data.rules.map((rule, i) => (
-                            <div key={i} className="px-4 py-3">
-                              <div className="text-sm font-medium text-gray-800">{rule.short_name}</div>
-                              <p className="text-xs text-gray-500 mt-1 leading-relaxed">{rule.description}</p>
+                            <div key={i} className="px-5 py-3">
+                              <div className="text-sm font-semibold text-gray-900">{rule.short_name}</div>
+                              <p className="text-sm text-gray-600 mt-1 leading-relaxed">{rule.description}</p>
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <div className="px-4 py-3">
+                        <div className="px-5 py-3">
                           <p className="text-sm text-gray-400 italic">No rules available</p>
                         </div>
                       )}
@@ -2518,6 +2656,335 @@ function RedditPageContent() {
             </div>
           );
         })()}
+
+        {/* Custom Prompts Dialog */}
+        {showPromptDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
+              <div className="px-6 py-4 border-b flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Custom Prompts</h2>
+                <button
+                  onClick={() => setShowPromptDialog(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                {/* Template Structure Explanation */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-xs text-gray-500 leading-relaxed">
+                  <p className="font-semibold text-gray-700 mb-1.5">When generating a comment or DM, the AI receives:</p>
+                  <ul className="space-y-1 ml-1">
+                    <li>1. Your <span className="text-orange-600 font-medium">Business Description</span> — so it knows what you do</li>
+                    <li>2. The <span className="font-medium text-gray-700">Reddit post</span> — title, content, subreddit, and author</li>
+                    <li>3. Your <span className="text-orange-600 font-medium">Comment / DM Prompt</span> — rules for how to write</li>
+                  </ul>
+                </div>
+
+                {/* Business Description */}
+                <div>
+                  <label className="text-sm font-semibold text-gray-900 mb-2 block">Business Description</label>
+                  <textarea
+                    value={promptBizDesc}
+                    onChange={(e) => setPromptBizDesc(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    rows={3}
+                    placeholder="Your business description..."
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Tells the AI what your business does so it can tailor comments and DMs.</p>
+                </div>
+
+                {/* Comment Prompt */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-semibold text-gray-900">Comment Prompt</label>
+                    {promptComment !== DEFAULT_COMMENT_PROMPT && (
+                      <button
+                        onClick={() => setPromptComment(DEFAULT_COMMENT_PROMPT)}
+                        className="text-xs text-gray-500 hover:text-gray-700 underline"
+                      >
+                        Reset to default
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    value={promptComment}
+                    onChange={(e) => setPromptComment(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    rows={7}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Instructions for how the AI writes the public comment.</p>
+                </div>
+
+                {/* DM Prompt */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-semibold text-gray-900">DM Prompt</label>
+                    {promptDm !== DEFAULT_DM_PROMPT && (
+                      <button
+                        onClick={() => setPromptDm(DEFAULT_DM_PROMPT)}
+                        className="text-xs text-gray-500 hover:text-gray-700 underline"
+                      >
+                        Reset to default
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    value={promptDm}
+                    onChange={(e) => setPromptDm(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    rows={6}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Instructions for how the AI writes the direct message.</p>
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setShowPromptDialog(false)}
+                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={savingPrompts}
+                  onClick={async () => {
+                    if (!currentCampaign) return;
+                    setSavingPrompts(true);
+                    try {
+                      // Save empty string if unchanged from default (backend uses its own default)
+                      const commentToSave = promptComment === DEFAULT_COMMENT_PROMPT ? "" : promptComment;
+                      const dmToSave = promptDm === DEFAULT_DM_PROMPT ? "" : promptDm;
+                      await updateCampaignPrompts(currentCampaign.id, {
+                        business_description: promptBizDesc,
+                        custom_comment_prompt: commentToSave,
+                        custom_dm_prompt: dmToSave,
+                      });
+                      // Update local campaign state
+                      setCurrentCampaign({
+                        ...currentCampaign,
+                        business_description: promptBizDesc,
+                        custom_comment_prompt: commentToSave,
+                        custom_dm_prompt: dmToSave,
+                      });
+                      setShowPromptDialog(false);
+                    } catch (err) {
+                      setError("Failed to save prompts");
+                    } finally {
+                      setSavingPrompts(false);
+                    }
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                >
+                  {savingPrompts ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Create Post Dialog */}
+        {showCreatePostDialog && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
+              <div className="px-6 py-4 border-b flex items-center justify-between">
+                <h2 className="text-lg font-semibold">
+                  Create Post{createPostSubreddit ? ` — r/${createPostSubreddit}` : ""}
+                </h2>
+                <button
+                  onClick={() => setShowCreatePostDialog(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="px-6 py-4 overflow-y-auto flex-1">
+                {/* Step 1: Pick subreddit (only if none selected) */}
+                {!createPostSubreddit && !generatingPost && !generatedPost && (
+                  <div>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Select a subreddit to generate a post for.
+                    </p>
+                    <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                      {Array.from(new Set(leads.map(l => l.subreddit_name))).map((sub) => (
+                        <button
+                          key={sub}
+                          onClick={() => setCreatePostSubreddit(sub)}
+                          className="w-full text-left px-4 py-3 rounded-lg border border-gray-200 hover:border-gray-400 hover:bg-gray-50 transition-colors"
+                        >
+                          <span className="text-sm font-medium">r/{sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 2: Show prompt editor (subreddit chosen, not yet generated) */}
+                {createPostSubreddit && !generatingPost && !generatedPost && (
+                  <div className="space-y-4">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
+                      <p>The AI will automatically include:</p>
+                      <ul className="mt-1 space-y-0.5 ml-3 list-disc">
+                        <li>Your <span className="font-medium">Business Description</span></li>
+                        <li><span className="font-medium">Subreddit Rules</span> for r/{createPostSubreddit}</li>
+                      </ul>
+                      <p className="mt-1.5">Edit the instructions below to control how the post is written.</p>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-sm font-semibold text-gray-900">Post Instructions</label>
+                        {createPostPrompt !== DEFAULT_POST_PROMPT && (
+                          <button
+                            onClick={() => setCreatePostPrompt(DEFAULT_POST_PROMPT)}
+                            className="text-xs text-blue-600 hover:text-blue-800"
+                          >
+                            Reset to default
+                          </button>
+                        )}
+                      </div>
+                      <textarea
+                        value={createPostPrompt}
+                        onChange={(e) => setCreatePostPrompt(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-lg text-sm resize-none"
+                        rows={8}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 3: Loading */}
+                {generatingPost && (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <svg className="w-8 h-8 text-gray-400 animate-spin mb-3" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <p className="text-sm text-gray-500">Generating post for r/{createPostSubreddit}...</p>
+                  </div>
+                )}
+
+                {/* Step 4: Show result */}
+                {generatedPost && (
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-sm font-semibold text-gray-900">Title</label>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(generatedPost.title);
+                            setCopiedField("title");
+                            setTimeout(() => setCopiedField(null), 2000);
+                          }}
+                          className="text-xs text-gray-500 hover:text-gray-700"
+                        >
+                          {copiedField === "title" ? "Copied!" : "Copy"}
+                        </button>
+                      </div>
+                      <textarea
+                        value={generatedPost.title}
+                        onChange={(e) => setGeneratedPost({ ...generatedPost, title: e.target.value })}
+                        className="w-full px-3 py-2 border rounded-lg text-sm resize-none"
+                        rows={2}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-sm font-semibold text-gray-900">Content</label>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(generatedPost.content);
+                            setCopiedField("content");
+                            setTimeout(() => setCopiedField(null), 2000);
+                          }}
+                          className="text-xs text-gray-500 hover:text-gray-700"
+                        >
+                          {copiedField === "content" ? "Copied!" : "Copy"}
+                        </button>
+                      </div>
+                      <textarea
+                        value={generatedPost.content}
+                        onChange={(e) => setGeneratedPost({ ...generatedPost, content: e.target.value })}
+                        className="w-full px-3 py-2 border rounded-lg text-sm resize-none"
+                        rows={10}
+                      />
+                    </div>
+                    {/* Collapsible prompt used */}
+                    <details className="text-xs text-gray-500">
+                      <summary className="cursor-pointer hover:text-gray-700">View prompt used</summary>
+                      <pre className="mt-2 p-3 bg-gray-50 rounded-lg whitespace-pre-wrap text-xs">{generatedPost.instructions_used}</pre>
+                    </details>
+                  </div>
+                )}
+              </div>
+              <div className="px-6 py-4 border-t flex items-center justify-between">
+                <div>
+                  {/* Back to subreddit picker */}
+                  {(createPostSubreddit && !generatingPost) && (
+                    <button
+                      onClick={() => {
+                        setCreatePostSubreddit("");
+                        setGeneratedPost(null);
+                        setCopiedField(null);
+                        setCreatePostPrompt(DEFAULT_POST_PROMPT);
+                      }}
+                      className="text-sm text-gray-500 hover:text-gray-700"
+                    >
+                      ← Pick another subreddit
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setShowCreatePostDialog(false)}
+                    className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+                  >
+                    Close
+                  </button>
+                  {/* Generate / Regenerate button */}
+                  {createPostSubreddit && !generatingPost && (
+                    <button
+                      onClick={async () => {
+                        if (!currentCampaign || !createPostSubreddit) return;
+                        setGeneratingPost(true);
+                        setGeneratedPost(null);
+                        setCopiedField(null);
+                        try {
+                          const customInstr = createPostPrompt !== DEFAULT_POST_PROMPT ? createPostPrompt : undefined;
+                          const result = await generateSubredditPost(currentCampaign.id, createPostSubreddit, customInstr);
+                          setGeneratedPost(result);
+                          setCreatePostPrompt(result.instructions_used);
+                        } catch (err) {
+                          setError(`Failed to generate post for r/${createPostSubreddit}`);
+                        } finally {
+                          setGeneratingPost(false);
+                        }
+                      }}
+                      className="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800"
+                    >
+                      {generatedPost ? "Regenerate" : "Generate"}
+                    </button>
+                  )}
+                  {/* Copy All button */}
+                  {generatedPost && (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${generatedPost.title}\n\n${generatedPost.content}`);
+                        setCopiedField("content");
+                        setTimeout(() => setCopiedField(null), 2000);
+                      }}
+                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                    >
+                      Copy All
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Add Subreddit Modal */}
         {showAddSubredditModal && (

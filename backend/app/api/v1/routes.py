@@ -1546,7 +1546,9 @@ async def generate_lead_suggestions(
     try:
         suggestions = await scoring_service.generate_suggestion_on_demand(
             post_dict,
-            campaign.business_description
+            campaign.business_description,
+            comment_instructions=campaign.custom_comment_prompt or "",
+            dm_instructions=campaign.custom_dm_prompt or "",
         )
 
         # Update lead
@@ -1565,6 +1567,136 @@ async def generate_lead_suggestions(
     except Exception as e:
         logger.error(f"Error generating suggestions for lead {lead_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to generate suggestions: {str(e)}")
+
+
+@router.patch("/reddit/campaigns/{campaign_id}/prompts")
+def update_campaign_prompts(
+    campaign_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update custom prompts for a campaign."""
+    campaign = db.get(RedditCampaign, campaign_id)
+    if not campaign or campaign.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    if "business_description" in body:
+        campaign.business_description = body["business_description"]
+    if "custom_comment_prompt" in body:
+        campaign.custom_comment_prompt = body["custom_comment_prompt"]
+    if "custom_dm_prompt" in body:
+        campaign.custom_dm_prompt = body["custom_dm_prompt"]
+
+    db.commit()
+
+    return {
+        "id": campaign.id,
+        "business_description": campaign.business_description,
+        "custom_comment_prompt": campaign.custom_comment_prompt or "",
+        "custom_dm_prompt": campaign.custom_dm_prompt or "",
+    }
+
+
+@router.post("/reddit/campaigns/{campaign_id}/generate-post")
+async def generate_subreddit_post(
+    campaign_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Generate an AMA-style post for a subreddit, following its rules."""
+    from app.services.llm.client import get_llm_client
+    from app.models.tables import SubredditCache
+
+    campaign = db.get(RedditCampaign, campaign_id)
+    if not campaign or campaign.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    subreddit_name = body.get("subreddit_name", "").strip()
+    if not subreddit_name:
+        raise HTTPException(status_code=400, detail="subreddit_name is required")
+
+    custom_instructions = body.get("custom_instructions", "").strip()
+
+    # Default task instructions
+    default_instructions = """Write an AMA (Ask Me Anything) style post for this subreddit. The post must:
+- Strictly follow ALL subreddit rules listed above
+- Be written as a genuine community member sharing expertise, NOT as a business promotion
+- Introduce yourself and your experience/expertise relevant to the subreddit's topic
+- Invite the community to ask questions
+- Be authentic and conversational
+- Do NOT include any links, product names, or direct promotion
+- Title should follow subreddit conventions (e.g. "[AMA]" prefix if appropriate)"""
+
+    task_instructions = custom_instructions or default_instructions
+
+    # Fetch subreddit rules from cache
+    cached = db.query(SubredditCache).filter(
+        SubredditCache.name == subreddit_name
+    ).first()
+
+    rules_text = ""
+    if cached and cached.rules_json:
+        import json as _json
+        try:
+            rules = _json.loads(cached.rules_json)
+            if rules:
+                rules_text = "\n".join(
+                    f"- {r['short_name']}: {r['description']}" for r in rules
+                )
+        except Exception:
+            pass
+
+    rules_section = f"\nSUBREDDIT RULES for r/{subreddit_name}:\n{rules_text}" if rules_text else f"\nNo specific rules found for r/{subreddit_name}. Follow general Reddit etiquette."
+
+    prompt = f"""You are writing a Reddit post for r/{subreddit_name}.
+
+BUSINESS:
+{campaign.business_description}
+
+{rules_section}
+
+TASK:
+{task_instructions}
+
+Return ONLY valid JSON with this exact structure:
+{{"title": "Your post title here", "content": "Your post body here"}}"""
+
+    try:
+        llm_client = get_llm_client()
+        messages = [{"role": "user", "content": prompt}]
+        response = llm_client.chat(messages, temperature=0.7)
+
+        if isinstance(response, dict):
+            text = (
+                response.get("text")
+                or response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            )
+        else:
+            text = str(response)
+
+        text = text.strip()
+
+        # Parse JSON from response
+        import json as _json
+        # Handle markdown code blocks
+        if "```json" in text:
+            text = text.split("```json")[1].split("```")[0].strip()
+        elif "```" in text:
+            text = text.split("```")[1].split("```")[0].strip()
+
+        result = _json.loads(text)
+        return {
+            "title": result.get("title", ""),
+            "content": result.get("content", ""),
+            "subreddit_name": subreddit_name,
+            "instructions_used": task_instructions,
+        }
+
+    except Exception as e:
+        logger.error(f"Error generating post for r/{subreddit_name}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to generate post: {str(e)}")
 
 
 @router.delete("/reddit/campaigns/{campaign_id}")
@@ -1624,7 +1756,9 @@ def list_campaigns(
             last_poll_at=campaign.last_poll_at,
             created_at=campaign.created_at,
             subreddits_count=subreddits_count,
-            leads_count=leads_count
+            leads_count=leads_count,
+            custom_comment_prompt=campaign.custom_comment_prompt or "",
+            custom_dm_prompt=campaign.custom_dm_prompt or "",
         ))
 
     return responses

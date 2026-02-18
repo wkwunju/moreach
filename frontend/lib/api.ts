@@ -98,6 +98,22 @@ export async function fetchSubredditRules(campaignId: number): Promise<Subreddit
   return response.json();
 }
 
+export async function updateCampaignPrompts(
+  campaignId: number,
+  prompts: { business_description?: string; custom_comment_prompt?: string; custom_dm_prompt?: string }
+): Promise<{ business_description: string; custom_comment_prompt: string; custom_dm_prompt: string }> {
+  const response = await authFetch(`${baseUrl}/api/v1/reddit/campaigns/${campaignId}/prompts`, {
+    method: "PATCH",
+    body: JSON.stringify(prompts),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to update prompts");
+  }
+
+  return response.json();
+}
+
 export async function fetchRedditCampaigns(): Promise<RedditCampaign[]> {
   const response = await authFetch(`${baseUrl}/api/v1/reddit/campaigns`, {
     cache: "no-store"
@@ -122,11 +138,19 @@ export async function fetchRedditCampaign(campaignId: number): Promise<RedditCam
   return response.json();
 }
 
-export async function fetchRedditLeads(campaignId: number, status?: string): Promise<RedditLeadsResponse> {
-  const url = status 
-    ? `${baseUrl}/api/v1/reddit/campaigns/${campaignId}/leads?status=${status}`
-    : `${baseUrl}/api/v1/reddit/campaigns/${campaignId}/leads`;
-    
+export async function fetchRedditLeads(
+  campaignId: number,
+  status?: string,
+  limit: number = 200,
+  offset: number = 0
+): Promise<RedditLeadsResponse> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  params.set("limit", String(limit));
+  params.set("offset", String(offset));
+
+  const url = `${baseUrl}/api/v1/reddit/campaigns/${campaignId}/leads?${params.toString()}`;
+
   const response = await authFetch(url, {
     cache: "no-store"
   });
@@ -454,6 +478,28 @@ export async function generateLeadSuggestions(leadId: number): Promise<{
 
   if (!response.ok) {
     throw new Error("Failed to generate suggestions");
+  }
+
+  return response.json();
+}
+
+export async function generateSubredditPost(
+  campaignId: number,
+  subredditName: string,
+  customInstructions?: string
+): Promise<{ title: string; content: string; subreddit_name: string; instructions_used: string }> {
+  const payload: Record<string, string> = { subreddit_name: subredditName };
+  if (customInstructions) payload.custom_instructions = customInstructions;
+
+  const response = await authFetch(`${baseUrl}/api/v1/reddit/campaigns/${campaignId}/generate-post`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    timeoutMs: 120000,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to generate post" }));
+    throw new Error(error.detail || "Failed to generate post");
   }
 
   return response.json();

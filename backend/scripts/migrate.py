@@ -80,6 +80,7 @@ def detect_schema_level(conn, has_tables):
     """Detect what migration level the actual schema is at.
 
     Each migration adds specific schema artifacts. Check from newest to oldest:
+      0007: reddit_campaigns.custom_comment_prompt column
       0006: subreddit_cache.rules_json column
       0005: users.last_login_at column
       0004: poll_jobs table + reddit_leads.poll_job_id column
@@ -89,6 +90,12 @@ def detect_schema_level(conn, has_tables):
     """
     if not has_tables:
         return None
+
+    result = conn.execute(text(
+        "SELECT EXISTS(SELECT 1 FROM information_schema.columns "
+        "WHERE table_name = 'reddit_campaigns' AND column_name = 'custom_comment_prompt')"
+    ))
+    has_custom_prompts = result.scalar()
 
     result = conn.execute(text(
         "SELECT EXISTS(SELECT 1 FROM information_schema.columns "
@@ -120,13 +127,16 @@ def detect_schema_level(conn, has_tables):
     ))
     has_usage_tracking = result.scalar()
 
+    logger.info(f"  - custom_comment_prompt column exists: {has_custom_prompts}")
     logger.info(f"  - rules_json column exists: {has_rules_json}")
     logger.info(f"  - last_login_at column exists: {has_last_login_at}")
     logger.info(f"  - poll_jobs table exists: {has_poll_jobs}")
     logger.info(f"  - usage_tracking table exists: {has_usage_tracking}")
     logger.info(f"  - is_blocked column exists: {has_is_blocked}")
 
-    if has_rules_json:
+    if has_custom_prompts:
+        return "0007"
+    elif has_rules_json:
         return "0006"
     elif has_last_login_at:
         return "0005"

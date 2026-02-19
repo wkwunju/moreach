@@ -33,27 +33,22 @@ class RedditDiscoveryService:
         """
         logger.info("Generating search queries for business")
         
-        prompt = f"""You are helping a business find relevant Reddit communities (subreddits) where their target customers hang out.
+        prompt = f"""You are helping a business find relevant Reddit communities (subreddits).
 
 Business Description:
 {business_description}
 
-Generate 4-6 search keywords to find subreddits where potential customers are.
+Generate 5-8 search keywords that would help find relevant subreddits.
 
 Rules:
-- Each keyword must be 1-2 words MAX (e.g. "freelancing", "real estate", "photography")
-- Keywords should match subreddit names or topics, not long phrases
-- Think about the COMMUNITIES where customers gather, not the product itself
-- Include a mix of: target audience communities, adjacent industries, and problem areas
-- Avoid the product's own technical category — think about who USES it, not what it IS
-
-Example:
-- Business: accounting software for freelancers
-- BAD: "accounting software", "bookkeeping tools" (too product-focused)
-- GOOD: ["freelancing", "small business", "self employed", "side hustle", "contractors"]
+- Each keyword must be 1-2 words MAX — these are used to search for subreddit names/topics
+- Include the core industry/domain (e.g. "photography", "web design", "ecommerce")
+- Include adjacent fields where users might also need this product
+- Include the type of people who would use this (e.g. "freelancing", "startups", "students")
+- Think about what subreddits actually exist on Reddit — keywords should be broad community topics
 
 Return ONLY a JSON array of strings, no other text.
-Example format: ["keyword", "two words", "keyword", "two words"]"""
+Example: ["photography", "web design", "ecommerce", "blogging", "startups"]"""
 
         messages = [{"role": "user", "content": prompt}]
         

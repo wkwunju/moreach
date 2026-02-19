@@ -33,23 +33,29 @@ class RedditDiscoveryService:
         """
         logger.info("Generating search queries for business")
         
-        prompt = f"""You are helping a business find relevant Reddit communities (subreddits) for lead generation.
+        prompt = f"""You are helping a business find Reddit communities where their TARGET CUSTOMERS already hang out and discuss problems.
 
 Business Description:
 {business_description}
 
-Generate 4-6 search queries that would help find relevant subreddits where this business's target customers hang out.
+Generate 4-6 search queries to find subreddits where potential customers are.
 
-Requirements:
-- Generate at least 4 but no more than 6 queries
-- Focus on the industry, problems the business solves, and target audience
-- Keep queries broad enough to find active communities
-- Include both industry-specific and general terms
-- Consider pain points and use cases
+CRITICAL: Think about WHO needs this product and WHERE they already gather online — NOT the product category itself.
+
+Rules:
+- DO NOT use the product's own category as keywords (e.g. for an image compressor, don't search "image compression" — that finds tech subreddits, not customers)
+- Instead, think about the PROBLEMS and CONTEXTS that drive someone to need this product
+- Search for the communities where these people already are (their professions, hobbies, workflows, platforms they use)
+- Include specific use cases, platforms, or pain points mentioned in the description
+- Mix broad community terms with specific problem-oriented terms
+
+Example thinking:
+- Business sells accounting software for freelancers
+- BAD: "accounting software", "bookkeeping tools" (product category — finds tech subreddits)
+- GOOD: "freelancer taxes", "self employed invoicing", "small business finances" (where customers discuss their problems)
 
 Return ONLY a JSON array of strings, no other text.
-
-Example format: ["project management", "saas tools", "productivity", "small business owners"]"""
+Example format: ["keyword one", "keyword two", "keyword three", "keyword four"]"""
 
         messages = [{"role": "user", "content": prompt}]
         

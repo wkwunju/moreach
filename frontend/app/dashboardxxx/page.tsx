@@ -178,6 +178,19 @@ export default function AdminDashboard() {
     return sortAsc ? Number(aVal) - Number(bVal) : Number(bVal) - Number(aVal);
   });
 
+  const handleImpersonate = async (userId: number, email: string) => {
+    if (!confirm(`Login as ${email}?`)) return;
+    const res = await authFetch(`${baseUrl}/api/v1/admin/impersonate/${userId}`, {
+      method: "POST",
+    });
+    if (!res.ok) return alert("Failed to impersonate");
+    const result = await res.json();
+    localStorage.setItem("token", result.access_token);
+    localStorage.setItem("user", JSON.stringify(result.user));
+    window.dispatchEvent(new Event("authChange"));
+    router.push("/reddit");
+  };
+
   const retentionBuckets = [
     { label: "Active 24h", value: retention.active_24h, color: "bg-green-500" },
     { label: "1-7 days", value: retention.active_1_7d, color: "bg-green-300" },
@@ -358,6 +371,7 @@ export default function AdminDashboard() {
                     {sortKey === key && (sortAsc ? " ↑" : " ↓")}
                   </th>
                 ))}
+                <th className="p-3 w-20"></th>
               </tr>
             </thead>
             <tbody>
@@ -380,6 +394,14 @@ export default function AdminDashboard() {
                   <td className="p-3 text-right">{u.contacted}</td>
                   <td className="p-3 text-right">{u.contact_rate}%</td>
                   <td className="p-3 text-right">{u.api_calls.toLocaleString()}</td>
+                  <td className="p-3">
+                    <button
+                      onClick={() => handleImpersonate(u.id, u.email)}
+                      className="text-xs text-gray-500 hover:text-gray-900 whitespace-nowrap"
+                    >
+                      Login as →
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

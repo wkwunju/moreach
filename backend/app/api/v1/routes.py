@@ -2339,3 +2339,21 @@ def admin_dashboard(
         "per_user": per_user,
         "campaign_health": campaign_health,
     }
+
+
+@router.post("/admin/impersonate/{user_id}")
+def admin_impersonate(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin_dashboard),
+):
+    """Generate a JWT token for the target user (admin only)."""
+    target_user = db.get(User, user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    token = create_access_token(data={"sub": str(target_user.id)})
+    return {
+        "access_token": token,
+        "user": user_to_response(target_user),
+    }

@@ -33,29 +33,27 @@ class RedditDiscoveryService:
         """
         logger.info("Generating search queries for business")
         
-        prompt = f"""You are helping a business find Reddit communities where their TARGET CUSTOMERS already hang out and discuss problems.
+        prompt = f"""You are helping a business find relevant Reddit communities (subreddits) where their target customers hang out.
 
 Business Description:
 {business_description}
 
-Generate 4-6 search queries to find subreddits where potential customers are.
-
-CRITICAL: Think about WHO needs this product and WHERE they already gather online — NOT the product category itself.
+Generate 4-6 search keywords to find subreddits where potential customers are.
 
 Rules:
-- DO NOT use the product's own category as keywords (e.g. for an image compressor, don't search "image compression" — that finds tech subreddits, not customers)
-- Instead, think about the PROBLEMS and CONTEXTS that drive someone to need this product
-- Search for the communities where these people already are (their professions, hobbies, workflows, platforms they use)
-- Include specific use cases, platforms, or pain points mentioned in the description
-- Mix broad community terms with specific problem-oriented terms
+- Each keyword must be 1-2 words MAX (e.g. "freelancing", "real estate", "photography")
+- Keywords should match subreddit names or topics, not long phrases
+- Think about the COMMUNITIES where customers gather, not the product itself
+- Include a mix of: target audience communities, adjacent industries, and problem areas
+- Avoid the product's own technical category — think about who USES it, not what it IS
 
-Example thinking:
-- Business sells accounting software for freelancers
-- BAD: "accounting software", "bookkeeping tools" (product category — finds tech subreddits)
-- GOOD: "freelancer taxes", "self employed invoicing", "small business finances" (where customers discuss their problems)
+Example:
+- Business: accounting software for freelancers
+- BAD: "accounting software", "bookkeeping tools" (too product-focused)
+- GOOD: ["freelancing", "small business", "self employed", "side hustle", "contractors"]
 
 Return ONLY a JSON array of strings, no other text.
-Example format: ["keyword one", "keyword two", "keyword three", "keyword four"]"""
+Example format: ["keyword", "two words", "keyword", "two words"]"""
 
         messages = [{"role": "user", "content": prompt}]
         

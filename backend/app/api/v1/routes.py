@@ -788,11 +788,15 @@ def discover_subreddits(
     if campaign.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to access this campaign")
     
-    # Parse search queries
-    search_queries = json.loads(campaign.search_queries)
+    # Regenerate search queries from business description (always fresh)
+    discovery_service = RedditDiscoveryService()
+    search_queries = discovery_service.generate_search_queries(campaign.business_description)
+
+    # Update cached queries in campaign
+    campaign.search_queries = json.dumps(search_queries)
+    db.commit()
 
     # Discover subreddits
-    discovery_service = RedditDiscoveryService()
     subreddits = discovery_service.discover_subreddits(search_queries)
 
     # Track Reddit API usage
